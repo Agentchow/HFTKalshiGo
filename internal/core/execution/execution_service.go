@@ -37,7 +37,8 @@ func NewService(bus *events.Bus, router *LaneRouter, client *kalshi_http.Client,
 }
 
 // onOrderIntent is called on the game's goroutine (via the synchronous bus).
-// It checks lane risk/throttle/dedup, then spawns a goroutine for the HTTP call.
+// It checks per-game and per-sport spending caps, throttle, and dedup,
+// then spawns a goroutine for the HTTP call.
 func (s *Service) onOrderIntent(evt events.Event) error {
 	intent, ok := evt.Payload.(events.OrderIntent)
 	if !ok {
@@ -50,13 +51,26 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		return nil
 	}
 
-	if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore) {
+	orderCents := int(intent.LimitPct)
+
+	// Per-game spending cap (safe to read — we're on the game's goroutine).
+	gc, gcOK := s.gameStore.Get(intent.Sport, intent.GameID)
+	if gcOK && lane.MaxGameCents() > 0 {
+		if gc.TotalExposureCents()+orderCents > lane.MaxGameCents() {
+			telemetry.Infof("execution: per-game cap reached ticker=%s game=%s spent=%d limit=%d",
+				intent.Ticker, intent.GameID, gc.TotalExposureCents(), lane.MaxGameCents())
+			return nil
+		}
+	}
+
+	// Per-sport spending cap + throttle + idempotency.
+	if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents) {
 		telemetry.Infof("execution: blocked by lane checks ticker=%s", intent.Ticker)
 		return nil
 	}
 
 	// Mark as sent before the async call so duplicate intents are rejected.
-	lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore)
+	lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
 
 	// Fire the HTTP call on its own goroutine — don't block the game's event loop.
 	go s.placeOrder(intent)
@@ -89,7 +103,6 @@ func (s *Service) placeOrder(intent events.OrderIntent) {
 	telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q",
 		intent.Ticker, resp.Order.OrderID, intent.Reason)
 
-	// Record the fill back on the game's goroutine.
 	gc, ok := s.gameStore.Get(intent.Sport, intent.GameID)
 	if !ok {
 		return

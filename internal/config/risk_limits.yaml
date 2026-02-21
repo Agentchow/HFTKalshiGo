@@ -1,52 +1,41 @@
-# Per-sport/league risk limits
+# Per-sport and per-league risk limits.
 #
-# max_exposure_pct: fraction of bankroll allowed per game (0.0–1.0)
-# max_order_cents:  maximum single order size in cents
-# throttle_ms:      minimum interval between orders per lane
-# max_open_orders:  maximum concurrent open orders per lane
+# max_sport_cents: total spending cap across all games of this sport
+# max_game_cents:  spending cap per individual game
+# throttle_ms:     minimum interval between orders per lane
 
 hockey:
-  ahl:
-    max_exposure_pct: 0.25
-    max_order_cents: 5000
-    throttle_ms: 500
-    max_open_orders: 5
-  nhl:
-    max_exposure_pct: 0.15
-    max_order_cents: 3000
-    throttle_ms: 500
-    max_open_orders: 3
-  echl:
-    max_exposure_pct: 0.25
-    max_order_cents: 5000
-    throttle_ms: 500
-    max_open_orders: 5
+  max_sport_cents: 20000
+  leagues:
+    ahl:
+      max_game_cents: 5000
+      throttle_ms: 500
+    nhl:
+      max_game_cents: 3000
+      throttle_ms: 500
+    echl:
+      max_game_cents: 5000
+      throttle_ms: 500
 
 soccer:
-  epl:
-    max_exposure_pct: 0.20
-    max_order_cents: 4000
-    throttle_ms: 500
-    max_open_orders: 6
-  la_liga:
-    max_exposure_pct: 0.20
-    max_order_cents: 4000
-    throttle_ms: 500
-    max_open_orders: 6
-  ucl:
-    max_exposure_pct: 0.15
-    max_order_cents: 3000
-    throttle_ms: 500
-    max_open_orders: 4
+  max_sport_cents: 20000
+  leagues:
+    epl:
+      max_game_cents: 4000
+      throttle_ms: 500
+    la_liga:
+      max_game_cents: 4000
+      throttle_ms: 500
+    ucl:
+      max_game_cents: 3000
+      throttle_ms: 500
 
 football:
-  nfl:
-    max_exposure_pct: 0.15
-    max_order_cents: 3000
-    throttle_ms: 500
-    max_open_orders: 3
-  ncaaf:
-    max_exposure_pct: 0.20
-    max_order_cents: 4000
-    throttle_ms: 500
-    max_open_orders: 5
+  max_sport_cents: 15000
+  leagues:
+    nfl:
+      max_game_cents: 3000
+      throttle_ms: 500
+    ncaaf:
+      max_game_cents: 4000
+      throttle_ms: 500

@@ -1,30 +1,48 @@
 package lanes
 
-// Lane encapsulates risk limits, throttle, and idempotency for a
+// Lane encapsulates spending limits, throttle, and idempotency for a
 // single (sport, league) execution path.
 type Lane struct {
-	risk       *RiskGuard
-	throttle   *Throttle
-	idempotent *IdempotencyGuard
+	maxGameCents int
+	spend        *SpendGuard
+	throttle     *Throttle
+	idempotent   *IdempotencyGuard
 }
 
-func NewLane(maxOpenOrders int, maxOrderCents int, throttleMs int64) *Lane {
+func NewLane(maxGameCents int, maxSportCents int, throttleMs int64) *Lane {
 	return &Lane{
-		risk:       NewRiskGuard(maxOpenOrders, maxOrderCents),
-		throttle:   NewThrottle(throttleMs),
-		idempotent: NewIdempotencyGuard(),
+		maxGameCents: maxGameCents,
+		spend:        NewSpendGuard(maxSportCents),
+		throttle:     NewThrottle(throttleMs),
+		idempotent:   NewIdempotencyGuard(),
 	}
 }
 
+// NewLaneWithSpend creates a lane that shares an existing SpendGuard
+// (so multiple leagues under the same sport share one sport-level cap).
+func NewLaneWithSpend(maxGameCents int, spend *SpendGuard, throttleMs int64) *Lane {
+	return &Lane{
+		maxGameCents: maxGameCents,
+		spend:        spend,
+		throttle:     NewThrottle(throttleMs),
+		idempotent:   NewIdempotencyGuard(),
+	}
+}
+
+// MaxGameCents returns the per-game spending limit for this lane.
+func (l *Lane) MaxGameCents() int {
+	return l.maxGameCents
+}
+
 // Allow returns true if an order for this ticker+score is permitted.
-func (l *Lane) Allow(ticker string, homeScore, awayScore int) bool {
+func (l *Lane) Allow(ticker string, homeScore, awayScore int, orderCents int) bool {
 	key := l.idempotent.Key(ticker, homeScore, awayScore)
 
 	if l.idempotent.HasSeen(key) {
 		return false
 	}
 
-	if !l.risk.CanPlace() {
+	if !l.spend.CanSpend(orderCents) {
 		return false
 	}
 
@@ -35,11 +53,12 @@ func (l *Lane) Allow(ticker string, homeScore, awayScore int) bool {
 	return true
 }
 
-// RecordOrder marks that an order was placed for this ticker+score combo.
-func (l *Lane) RecordOrder(ticker string, homeScore, awayScore int) {
+// RecordOrder marks that an order was placed for this ticker+score combo
+// and records the spending against the sport-level cap.
+func (l *Lane) RecordOrder(ticker string, homeScore, awayScore int, orderCents int) {
 	key := l.idempotent.Key(ticker, homeScore, awayScore)
 	l.idempotent.Record(key)
-	l.risk.RecordPlacement()
+	l.spend.Record(orderCents)
 	l.throttle.Touch()
 }
 

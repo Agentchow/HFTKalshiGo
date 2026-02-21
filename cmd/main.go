@@ -35,6 +35,9 @@ func main() {
 
 	// ── Core infrastructure ──────────────────────────────────────
 	// Single event bus that all components publish/subscribe through.
+	// When someone calls bus.Publish(event), the bus looks up the event's type in the map, 
+	// calls the matching handlers, and the event is gone. 
+	// Nothing is saved. There's no queue, no history, no replay.
 	bus := events.NewBus()
 	// In-memory store of all active games, keyed by (sport, game_id).
 	gameStore := store.New()
@@ -50,11 +53,21 @@ func main() {
 	// ── Strategy engine (subscribes to score changes) ────────────
 	_ = strategy.NewEngine(bus, gameStore, registry)
 
+	// ── Risk limits from YAML ────────────────────────────────────
+	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
+	if err != nil {
+		telemetry.Warnf("risk_limits: failed to load %s: %v (using defaults)", cfg.RiskLimitsPath, err)
+		riskLimits = config.RiskLimits{}
+	}
+
 	// ── Execution lane router ────────────────────────────────────
+	// Each sport gets a shared SpendGuard for the sport-level cap.
+	// Each league under that sport gets its own lane with a per-game cap,
+	// but they all share the same sport-level spend tracker.
 	laneRouter := execution.NewLaneRouter()
-	laneRouter.Register(events.SportHockey, "*", lanes.NewLane(5, 5000, 500))
-	laneRouter.Register(events.SportSoccer, "*", lanes.NewLane(6, 4000, 500))
-	laneRouter.Register(events.SportFootball, "*", lanes.NewLane(5, 4000, 500))
+	registerSportLanes(laneRouter, riskLimits, events.SportHockey, "hockey")
+	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
+	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
 
 	// ── Outbound: Kalshi HTTP client ─────────────────────────────
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, cfg.KalshiAPIKey, cfg.KalshiSecret)
@@ -204,6 +217,36 @@ func queryNgrokAPI() (string, error) {
 		return result.Tunnels[0].PublicURL, nil
 	}
 	return "", nil
+}
+
+// registerSportLanes creates per-league lanes that share a single sport-level
+// SpendGuard. If no YAML config exists for a sport, it registers a permissive
+// wildcard lane with defaults.
+func registerSportLanes(router *execution.LaneRouter, rl config.RiskLimits, sport events.Sport, sportKey string) {
+	sl, ok := rl.SportLimit(sportKey)
+	if !ok {
+		// No YAML entry — register a wildcard with generous defaults.
+		router.Register(sport, "*", lanes.NewLane(5000, 50000, 500))
+		return
+	}
+
+	sportSpend := lanes.NewSpendGuard(sl.MaxSportCents)
+
+	if len(sl.Leagues) == 0 {
+		router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend, 500))
+		return
+	}
+
+	for league, ll := range sl.Leagues {
+		throttle := ll.ThrottleMs
+		if throttle == 0 {
+			throttle = 500
+		}
+		router.Register(sport, league, lanes.NewLaneWithSpend(ll.MaxGameCents, sportSpend, throttle))
+	}
+
+	// Wildcard fallback for leagues not explicitly listed.
+	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend, 500))
 }
 
 func initLogging(level string) {

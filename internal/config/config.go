@@ -32,6 +32,10 @@ type Config struct {
 	ScoreDropConfirmSec int
 	ScoreResetThrottle  time.Duration
 
+	// ngrok
+	NgrokEnabled bool
+	NgrokDomain  string // custom domain, e.g. "myapp.ngrok.io"
+
 	// Telemetry
 	LogLevel string
 }
@@ -57,6 +61,9 @@ func Load() *Config {
 
 		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 30),
 		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 60)) * time.Second,
+
+		NgrokEnabled: envStr("NGROK_ENABLED", "true") == "true",
+		NgrokDomain:  envStr("NGROK_DOMAIN", ""),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

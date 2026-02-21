@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -35,6 +37,8 @@ type Config struct {
 }
 
 func Load() *Config {
+	_ = godotenv.Load()
+
 	return &Config{
 		WebhookHost: envStr("GOALSERVE_WEBHOOK_HOST", "0.0.0.0"),
 		WebhookPort: envInt("GOALSERVE_WEBHOOK_PORT", 8765),

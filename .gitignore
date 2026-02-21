@@ -1,0 +1,17 @@
+# Secrets
+.env
+*.pem
+
+# Go build
+/bin/
+/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

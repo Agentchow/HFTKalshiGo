@@ -1,0 +1,52 @@
+# Per-sport/league risk limits
+#
+# max_exposure_pct: fraction of bankroll allowed per game (0.0–1.0)
+# max_order_cents:  maximum single order size in cents
+# throttle_ms:      minimum interval between orders per lane
+# max_open_orders:  maximum concurrent open orders per lane
+
+hockey:
+  ahl:
+    max_exposure_pct: 0.25
+    max_order_cents: 5000
+    throttle_ms: 500
+    max_open_orders: 5
+  nhl:
+    max_exposure_pct: 0.15
+    max_order_cents: 3000
+    throttle_ms: 500
+    max_open_orders: 3
+  echl:
+    max_exposure_pct: 0.25
+    max_order_cents: 5000
+    throttle_ms: 500
+    max_open_orders: 5
+
+soccer:
+  epl:
+    max_exposure_pct: 0.20
+    max_order_cents: 4000
+    throttle_ms: 500
+    max_open_orders: 6
+  la_liga:
+    max_exposure_pct: 0.20
+    max_order_cents: 4000
+    throttle_ms: 500
+    max_open_orders: 6
+  ucl:
+    max_exposure_pct: 0.15
+    max_order_cents: 3000
+    throttle_ms: 500
+    max_open_orders: 4
+
+football:
+  nfl:
+    max_exposure_pct: 0.15
+    max_order_cents: 3000
+    throttle_ms: 500
+    max_open_orders: 3
+  ncaaf:
+    max_exposure_pct: 0.20
+    max_order_cents: 4000
+    throttle_ms: 500
+    max_open_orders: 5

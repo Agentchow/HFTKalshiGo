@@ -10,9 +10,10 @@ import (
 
 type Config struct {
 	// GoalServe webhook
-	WebhookHost     string
-	WebhookPort     int
-	GoalserveAPIKey string
+	WebhookHost      string
+	WebhookPort      int
+	GoalserveAPIKey  string
+	WebhookStorePath string
 
 	// Kalshi API
 	KalshiMode    string // "demo" or "prod"
@@ -28,13 +29,14 @@ type Config struct {
 	// Risk
 	RiskLimitsPath string
 
-	// Timing
+	// Timing — wait X seconds to confirm an overturned goal before acting.
 	ScoreDropConfirmSec int
 	ScoreResetThrottle  time.Duration
 
 	// ngrok
-	NgrokEnabled bool
-	NgrokDomain  string
+	NgrokEnabled   bool
+	NgrokAuthToken string
+	NgrokDomain    string
 
 	// Telemetry
 	LogLevel string
@@ -59,9 +61,10 @@ func Load() *Config {
 	}
 
 	return &Config{
-		WebhookHost:     envStr("GOALSERVE_WEBHOOK_HOST", "0.0.0.0"),
-		WebhookPort:     envInt("GOALSERVE_WEBHOOK_PORT", 8765),
-		GoalserveAPIKey: envStr("GOALSERVE_API_KEY", ""),
+		WebhookHost:      envStr("GOALSERVE_WEBHOOK_HOST", "0.0.0.0"),
+		WebhookPort:      envInt("GOALSERVE_WEBHOOK_PORT", 8765),
+		GoalserveAPIKey:  envStr("GOALSERVE_API_KEY", ""),
+		WebhookStorePath: envStr("WEBHOOK_STORE_PATH", "data/goalserve_webhooks.db"),
 
 		KalshiMode:    mode,
 		KalshiBaseURL: baseURL,
@@ -74,15 +77,12 @@ func Load() *Config {
 
 		RiskLimitsPath: envStr("RISK_LIMITS_PATH", "internal/config/risk_limits.yaml"),
 
-		// Sommetimes GoalServe/GeniusScore will give us a score change where score "decreases"
-		// Meaning the home team scored a Goal and the Referee decided to overturn it.
-		// We wait X seconds to confirm a score actually dropped (overturned goal).
 		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 30),
-		// Pauses trading for X seconds due to score reset
-		ScoreResetThrottle: time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 60)) * time.Second,
+		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 60)) * time.Second,
 
-		NgrokEnabled: envStr("NGROK_ENABLED", "true") == "true",
-		NgrokDomain:  envStr("NGROK_DOMAIN", ""),
+		NgrokEnabled:   envStr("NGROK_ENABLED", "true") == "true",
+		NgrokAuthToken: envStr("NGROK_AUTH_TOKEN", ""),
+		NgrokDomain:    envStr("NGROK_DOMAIN", ""),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

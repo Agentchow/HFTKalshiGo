@@ -23,12 +23,14 @@ import (
 //   GET  /health          -> 200 OK
 type Handler struct {
 	bus     *events.Bus
+	store   *Store
 	parsers map[events.Sport]*Parser
 }
 
-func NewHandler(bus *events.Bus) *Handler {
+func NewHandler(bus *events.Bus, store *Store) *Handler {
 	return &Handler{
-		bus: bus,
+		bus:   bus,
+		store: store,
 		parsers: map[events.Sport]*Parser{
 			events.SportHockey:   NewParser(events.SportHockey),
 			events.SportSoccer:   NewParser(events.SportSoccer),
@@ -60,6 +62,10 @@ func (h *Handler) handle(sport events.Sport) http.HandlerFunc {
 			return
 		}
 
+		if h.store != nil {
+			h.store.Insert(sport, body)
+		}
+
 		// Respond immediately — GoalServe doesn't use the response.
 		w.WriteHeader(http.StatusOK)
 
@@ -73,15 +79,15 @@ func (h *Handler) handle(sport events.Sport) http.HandlerFunc {
 		parser := h.parsers[sport]
 		evts := parser.Parse(&payload)
 
-		telemetry.Infof("goalserve: %s webhook received  raw_events=%d parsed=%d  bytes=%d",
+		telemetry.Debugf("goalserve: %s webhook received  raw_events=%d parsed=%d  bytes=%d",
 			sport, len(payload.Events), len(evts), len(body))
 		for _, evt := range evts {
 			if sc, ok := evt.Payload.(events.ScoreChangeEvent); ok {
-				telemetry.Infof("  [%s] eid=%s  %s vs %s  %d-%d  %s",
+				telemetry.Debugf("  [%s] eid=%s  %s vs %s  %d-%d  %s",
 					sc.Sport, sc.EID, sc.AwayTeam, sc.HomeTeam, sc.AwayScore, sc.HomeScore, sc.Period)
 			}
 			if gf, ok := evt.Payload.(events.GameFinishEvent); ok {
-				telemetry.Infof("  [%s] eid=%s  %s vs %s  %d-%d  FINAL (%s)",
+				telemetry.Debugf("  [%s] eid=%s  %s vs %s  %d-%d  FINAL (%s)",
 					gf.Sport, gf.EID, gf.AwayTeam, gf.HomeTeam, gf.AwayScore, gf.HomeScore, gf.FinalState)
 			}
 			h.bus.Publish(evt)

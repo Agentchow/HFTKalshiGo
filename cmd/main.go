@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -31,67 +30,55 @@ import (
 
 func main() {
 	cfg := config.Load()
-	initLogging(cfg.LogLevel)
+	telemetry.Init(parseLogLevel(cfg.LogLevel))
+	telemetry.Infof("Starting system")
 
-	telemetry.Infof("starting hft-trading system")
-
-	// ── Core infrastructure ──────────────────────────────────────
-	// Single event bus that all components publish/subscribe through.
-	// When someone calls bus.Publish(event), the bus looks up the event's type in the map, 
-	// calls the matching handlers, and the event is gone. 
-	// Nothing is saved. There's no queue, no history, no replay.
 	bus := events.NewBus()
-	// In-memory store of all active games, keyed by (sport, game_id).
 	gameStore := store.New()
 
-	// ── Risk limits from YAML ────────────────────────────────────
+	// ── Risk limits ─────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
 	if err != nil {
-		telemetry.Errorf("risk_limits: failed to load %s: %v", cfg.RiskLimitsPath, err)
+		telemetry.Errorf("Failed to load risk limits: %v", err)
 		os.Exit(1)
 	}
 
-	// ── Strategy registry ────────────────────────────────────────
-	// Maps each sport to its trading strategy so the engine can look up
-	// the correct one when a score-change event arrives.
+	// ── Strategies ──────────────────────────────────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec))
 	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
 	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-
-	// ── Strategy engine (subscribes to score changes) ────────────
 	_ = strategy.NewEngine(bus, gameStore, registry)
 
-	// ── Execution lane router ────────────────────────────────────
-	// Each sport gets a shared SpendGuard for the sport-level cap.
-	// Each league under that sport gets its own lane with a per-game cap,
-	// but they all share the same sport-level spend tracker.
+	// ── Execution lanes ─────────────────────────────────────────
 	laneRouter := execution.NewLaneRouter()
 	registerSportLanes(laneRouter, riskLimits, events.SportHockey, "hockey")
 	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
 	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
 
-	// ── Kalshi RSA-PSS signer (shared by HTTP + WS clients) ─────
-	if cfg.KalshiKeyID == "" || cfg.KalshiKeyFile == "" {
-		telemetry.Errorf("kalshi: missing credentials — set %s_KEYID and %s_KEYFILE in .env",
-			strings.ToUpper(cfg.KalshiMode), strings.ToUpper(cfg.KalshiMode))
-		os.Exit(1)
-	}
+	// ── Kalshi auth + clients ───────────────────────────────────
 	kalshiSigner, err := kalshi_auth.NewSignerFromFile(cfg.KalshiKeyID, cfg.KalshiKeyFile)
 	if err != nil {
-		telemetry.Errorf("kalshi auth: %v", err)
+		telemetry.Errorf("Kalshi auth: %v", err)
 		os.Exit(1)
 	}
-	telemetry.Infof("kalshi: mode=%s key=%s", cfg.KalshiMode, cfg.KalshiKeyID)
+	if !kalshiSigner.Enabled() {
+		telemetry.Errorf("Kalshi credentials missing — set %s_KEYID and %s_KEYFILE in .env", cfg.KalshiMode, cfg.KalshiMode)
+		os.Exit(1)
+	}
+	telemetry.Infof("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
 
-	// ── Outbound: Kalshi HTTP client ─────────────────────────────
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner)
-
-	// ── Execution service (subscribes to order intents) ──────────
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
 
-	// ── Inbound: GoalServe webhook handler ───────────────────────
-	webhookHandler := goalserve_webhook.NewHandler(bus)
+	// ── Webhook payload store ───────────────────────────────────
+	webhookStore, err := goalserve_webhook.OpenStore(cfg.WebhookStorePath)
+	if err != nil {
+		telemetry.Warnf("Webhook store disabled: %v", err)
+	}
+
+	// ── Webhook server ──────────────────────────────────────────
+	webhookHandler := goalserve_webhook.NewHandler(bus, webhookStore)
 	mux := http.NewServeMux()
 	webhookHandler.RegisterRoutes(mux)
 
@@ -104,57 +91,46 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// ── Start HTTP server ────────────────────────────────────────
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			telemetry.Errorf("http server error: %v", err)
+			telemetry.Errorf("HTTP server: %v", err)
 			os.Exit(1)
 		}
 	}()
+	telemetry.Infof("Webhook listening on %q", addr)
 
-	telemetry.Infof("webhook server listening on %s", addr)
-	telemetry.Infof("  POST /webhook/hockey")
-	telemetry.Infof("  POST /webhook/soccer")
-	telemetry.Infof("  POST /webhook/football")
-	telemetry.Infof("  GET  /health")
-
-	// ── ngrok tunnel ─────────────────────────────────────────────
+	// ── ngrok ───────────────────────────────────────────────────
 	var ngrokProc *os.Process
 	if cfg.NgrokEnabled {
-		proc, publicURL, err := startNgrok(cfg.WebhookPort, cfg.NgrokDomain)
+		proc, publicURL, err := startNgrok(cfg.WebhookPort, cfg.NgrokAuthToken, cfg.NgrokDomain)
 		if err != nil {
-			telemetry.Warnf("ngrok: failed to start: %v", err)
-			telemetry.Warnf("ngrok: falling back to local-only on %s", addr)
+			telemetry.Warnf("Ngrok failed: %v (falling back to local)", err)
 		} else {
 			ngrokProc = proc
-			telemetry.Infof("ngrok tunnel: %s -> %s", publicURL, addr)
-			telemetry.Infof("  GoalServe webhook URL: %s/webhook/hockey", publicURL)
+			telemetry.Infof("Ngrok tunnel on %q", publicURL)
 		}
 	}
 
-	// ── Inbound: Kalshi WebSocket (optional) ─────────────────────
+	// ── Kalshi WebSocket ────────────────────────────────────────
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if kalshiSigner.Enabled() {
-		kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
-		go func() {
-			if err := kalshiWS.Connect(ctx); err != nil {
-				telemetry.Warnf("kalshi_ws: failed to connect: %v", err)
-			}
-		}()
-	}
+	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
+	go func() {
+		if err := kalshiWS.Connect(ctx); err != nil {
+			telemetry.Warnf("Kalshi WS: %v", err)
+		}
+	}()
 
-	// ── Graceful shutdown ────────────────────────────────────────
+	// ── Shutdown ────────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	telemetry.Infof("shutting down...")
+	telemetry.Infof("Shutting down...")
 	cancel()
 
 	if ngrokProc != nil {
-		telemetry.Infof("stopping ngrok...")
 		ngrokProc.Signal(syscall.SIGTERM)
 		ngrokProc.Wait()
 	}
@@ -163,7 +139,11 @@ func main() {
 	defer shutdownCancel()
 	server.Shutdown(shutdownCtx)
 
-	telemetry.Infof("shutdown complete  webhooks=%d events=%d scores=%d orders=%d errors=%d",
+	if webhookStore != nil {
+		webhookStore.Close()
+	}
+
+	telemetry.Infof("Shutdown complete  webhooks=%d  events=%d  scores=%d  orders=%d  errors=%d",
 		telemetry.Metrics.WebhooksReceived.Value(),
 		telemetry.Metrics.EventsProcessed.Value(),
 		telemetry.Metrics.ScoreChanges.Value(),
@@ -172,35 +152,31 @@ func main() {
 	)
 }
 
-// startNgrok launches ngrok as a subprocess and returns the public URL.
-// Queries ngrok's local API at localhost:4040 to discover the tunnel URL.
-func startNgrok(port int, domain string) (*os.Process, string, error) {
+func startNgrok(port int, authToken, domain string) (*os.Process, string, error) {
 	args := []string{"http", fmt.Sprintf("%d", port)}
+	if authToken != "" {
+		args = append(args, "--authtoken", authToken)
+	}
 	if domain != "" {
 		args = append(args, "--domain", domain)
 	}
 
 	cmd := exec.Command("ngrok", args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		return nil, "", fmt.Errorf("start ngrok: %w", err)
 	}
 
-	// Wait for ngrok to start and expose its API.
 	var publicURL string
 	for i := 0; i < 30; i++ {
 		time.Sleep(500 * time.Millisecond)
-		url, err := queryNgrokAPI()
-		if err == nil && url != "" {
-			publicURL = url
+		if u, err := queryNgrokAPI(); err == nil && u != "" {
+			publicURL = u
 			break
 		}
 	}
-
 	if publicURL == "" {
 		cmd.Process.Kill()
-		return nil, "", fmt.Errorf("ngrok started but no tunnel URL found after 15s")
+		return nil, "", fmt.Errorf("no tunnel URL after 15s")
 	}
 
 	return cmd.Process, publicURL, nil
@@ -234,13 +210,9 @@ func queryNgrokAPI() (string, error) {
 	return "", nil
 }
 
-// registerSportLanes creates per-league lanes that share a single sport-level
-// SpendGuard. If no YAML config exists for a sport, it registers a permissive
-// wildcard lane with defaults.
 func registerSportLanes(router *execution.LaneRouter, rl config.RiskLimits, sport events.Sport, sportKey string) {
 	sl, ok := rl.SportLimit(sportKey)
 	if !ok {
-		// No YAML entry — register a wildcard with generous defaults.
 		router.Register(sport, "*", lanes.NewLane(5000, 50000, 500))
 		return
 	}
@@ -259,22 +231,18 @@ func registerSportLanes(router *execution.LaneRouter, rl config.RiskLimits, spor
 		}
 		router.Register(sport, league, lanes.NewLaneWithSpend(ll.MaxGameCents, sportSpend, throttle))
 	}
-
-	// Wildcard fallback for leagues not explicitly listed.
 	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend, 500))
 }
 
-func initLogging(level string) {
-	var l slog.Level
+func parseLogLevel(level string) slog.Level {
 	switch level {
 	case "debug":
-		l = slog.LevelDebug
+		return slog.LevelDebug
 	case "warn":
-		l = slog.LevelWarn
+		return slog.LevelWarn
 	case "error":
-		l = slog.LevelError
+		return slog.LevelError
 	default:
-		l = slog.LevelInfo
+		return slog.LevelInfo
 	}
-	telemetry.Init(l)
 }

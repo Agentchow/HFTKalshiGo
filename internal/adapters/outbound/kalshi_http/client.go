@@ -11,12 +11,15 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/telemetry"
+	"golang.org/x/time/rate"
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	signer     *kalshi_auth.Signer
+	baseURL      string
+	httpClient   *http.Client
+	signer       *kalshi_auth.Signer
+	readLimiter  *rate.Limiter
+	writeLimiter *rate.Limiter
 }
 
 func NewClient(baseURL string, signer *kalshi_auth.Signer) *Client {
@@ -25,11 +28,21 @@ func NewClient(baseURL string, signer *kalshi_auth.Signer) *Client {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		signer: signer,
+		signer:       signer,
+		readLimiter:  rate.NewLimiter(rate.Limit(20), 20),
+		writeLimiter: rate.NewLimiter(rate.Limit(10), 10),
 	}
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte, int, error) {
+	lim := c.readLimiter
+	if method != http.MethodGet {
+		lim = c.writeLimiter
+	}
+	if err := lim.Wait(ctx); err != nil {
+		return nil, 0, fmt.Errorf("rate limit wait: %w", err)
+	}
+
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)

@@ -3,7 +3,6 @@ package kalshi_ws
 import (
 	"context"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,9 +19,9 @@ type Client struct {
 	signer *kalshi_auth.Signer
 	bus    *events.Bus
 	conn   *websocket.Conn
-	mu     sync.Mutex
 	done   chan struct{}
 
+	// Tickers to subscribe to on connect (set via SetTickers before Connect).
 	tickers []string
 }
 
@@ -36,14 +35,10 @@ func NewClient(wsURL string, signer *kalshi_auth.Signer, bus *events.Bus) *Clien
 }
 
 func (c *Client) SetTickers(tickers []string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.tickers = tickers
 }
 
-// Connect establishes the WebSocket connection and starts the read loop.
 func (c *Client) Connect(ctx context.Context) error {
-	// Sign the WS path for auth headers (matches Python's request_headers("GET", path)).
 	parsed, _ := url.Parse(c.url)
 	wsPath := parsed.Path
 	if wsPath == "" {
@@ -57,7 +52,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	c.conn = conn
 
-	telemetry.Infof("kalshi_ws: connected to %s", c.url)
+	telemetry.Infof("Kalshi WS connected to %s", c.url)
 
 	go c.readLoop(ctx)
 	return nil
@@ -79,12 +74,11 @@ func (c *Client) readLoop(ctx context.Context) {
 		c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			telemetry.Warnf("kalshi_ws: read error: %v", err)
+			telemetry.Warnf("Kalshi WS read error: %v", err)
 			return
 		}
 
-		evts := ParseMessage(msg)
-		for _, evt := range evts {
+		for _, evt := range ParseMessage(msg) {
 			c.bus.Publish(evt)
 		}
 	}

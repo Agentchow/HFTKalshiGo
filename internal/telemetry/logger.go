@@ -1,17 +1,18 @@
 package telemetry
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
-	"time"
+	"sync"
 )
 
 var logger *slog.Logger
 
 func Init(level slog.Level) {
-	opts := &slog.HandlerOptions{Level: level}
-	logger = slog.New(slog.NewTextHandler(os.Stderr, opts))
+	logger = slog.New(&prettyHandler{w: os.Stderr, level: level})
 	slog.SetDefault(logger)
 }
 
@@ -22,18 +23,38 @@ func L() *slog.Logger {
 	return logger
 }
 
-func Timestamp() string {
-	return time.Now().Format("2006-01-02 15:04:05.000")
+func Infof(format string, args ...any)  { L().Info(fmt.Sprintf(format, args...)) }
+func Warnf(format string, args ...any)  { L().Warn(fmt.Sprintf(format, args...)) }
+func Errorf(format string, args ...any) { L().Error(fmt.Sprintf(format, args...)) }
+func Debugf(format string, args ...any) { L().Debug(fmt.Sprintf(format, args...)) }
+
+// prettyHandler outputs: [2026-02-21 5:10:39 PM PST] message
+type prettyHandler struct {
+	w     io.Writer
+	level slog.Level
+	mu    sync.Mutex
 }
 
-func Infof(format string, args ...any) {
-	L().Info(fmt.Sprintf(format, args...))
+func (h *prettyHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
 }
 
-func Warnf(format string, args ...any) {
-	L().Warn(fmt.Sprintf(format, args...))
+func (h *prettyHandler) Handle(_ context.Context, r slog.Record) error {
+	ts := r.Time.Format("2006-01-02 3:04:05 PM MST")
+
+	var prefix string
+	switch {
+	case r.Level >= slog.LevelError:
+		prefix = "ERROR: "
+	case r.Level >= slog.LevelWarn:
+		prefix = "WARN: "
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, err := fmt.Fprintf(h.w, "[%s] %s%s\n", ts, prefix, r.Message)
+	return err
 }
 
-func Errorf(format string, args ...any) {
-	L().Error(fmt.Sprintf(format, args...))
-}
+func (h *prettyHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *prettyHandler) WithGroup(_ string) slog.Handler       { return h }

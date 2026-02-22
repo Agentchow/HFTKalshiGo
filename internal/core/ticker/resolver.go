@@ -20,7 +20,7 @@ import (
 var defaultSeriesTickers = map[events.Sport][]string{
 	events.SportHockey: {
 		"KXAHLGAME", "KXNHLGAME", "KXKHLGAME", "KXSHLGAME", "KXLIIGAGAME",
-		"KXWOMHOCKEY", "KXWOWHOCKEY",
+		"KXELHGAME", "KXWOMHOCKEY", "KXWOWHOCKEY",
 	},
 	events.SportSoccer: {
 		"KXEPLGAME", "KXUCLGAME", "KXLALIGAGAME", "KXBUNDESLIGAGAME",
@@ -46,6 +46,7 @@ var seriesSlugs = map[string]string{
 	"KXKHLGAME":    "khl-game",
 	"KXSHLGAME":    "shl-game",
 	"KXLIIGAGAME":  "liiga-game",
+	"KXELHGAME":    "elh-game",
 	"KXWOMHOCKEY":  "winter-olympics-mens-hockey",
 	"KXWOWHOCKEY":  "winter-olympics-womens-hockey",
 	// Soccer
@@ -273,35 +274,56 @@ type matchCandidate struct {
 	timeDiff time.Duration // abs(market expiry - game start)
 }
 
-// resolveHockey matches hockey/football markets.
-// When multiple markets match the same team pair, picks the one whose
-// expiration is closest to gameStartedAt (doubleheader disambiguation).
-func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNorm string, aliases map[string]string, gameStartedAt time.Time, window time.Duration) *ResolvedTickers {
-	var candidates []matchCandidate
+// hockeyEventCandidate is a parsed hockey event group that matched the team pair.
+type hockeyEventCandidate struct {
+	teamMarkets []kalshi_http.Market
+	timeDiff    time.Duration
+}
 
+// resolveHockey matches hockey/football markets by grouping all markets
+// under the same EventTicker, then picking the event closest in time.
+func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNorm string, aliases map[string]string, gameStartedAt time.Time, window time.Duration) *ResolvedTickers {
+	byEvent := make(map[string][]kalshi_http.Market)
 	for _, m := range markets {
-		t1, t2 := teamNamesFromTitle(m.Title, aliases)
-		if t1 == "" || t2 == "" {
-			if m.Subtitle != "" {
-				t1, t2 = teamNamesFromTitle(m.Subtitle, aliases)
+		if m.EventTicker != "" {
+			byEvent[m.EventTicker] = append(byEvent[m.EventTicker], m)
+		}
+	}
+
+	var candidates []hockeyEventCandidate
+
+	for _, group := range byEvent {
+		matched := false
+		for _, m := range group {
+			t1, t2 := teamNamesFromTitle(m.Title, aliases)
+			if t1 == "" || t2 == "" {
+				if m.Subtitle != "" {
+					t1, t2 = teamNamesFromTitle(m.Subtitle, aliases)
+				}
 			}
 			if t1 == "" || t2 == "" {
 				continue
 			}
+			if (fuzzyContains(t1, homeNorm) && fuzzyContains(t2, awayNorm)) ||
+				(fuzzyContains(t1, awayNorm) && fuzzyContains(t2, homeNorm)) {
+				matched = true
+				break
+			}
 		}
-
-		pairMatches := (t1 == homeNorm && t2 == awayNorm) ||
-			(t1 == awayNorm && t2 == homeNorm) ||
-			(fuzzyContains(t1, homeNorm) && fuzzyContains(t2, awayNorm)) ||
-			(fuzzyContains(t1, awayNorm) && fuzzyContains(t2, homeNorm))
-
-		if !pairMatches {
+		if !matched {
 			continue
 		}
 
-		candidates = append(candidates, matchCandidate{
-			market:   m,
-			timeDiff: absTimeDiff(gameStartedAt, parseMarketExpiry(m)),
+		var maxExpiry time.Time
+		for _, m := range group {
+			if t := parseMarketExpiry(m); !t.IsZero() && t.After(maxExpiry) {
+				maxExpiry = t
+			}
+		}
+
+		candidates = append(candidates, hockeyEventCandidate{
+			teamMarkets: group,
+			timeDiff:    absTimeDiff(gameStartedAt, maxExpiry),
 		})
 	}
 
@@ -309,8 +331,6 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 		return nil
 	}
 
-	// If only one candidate, use it directly
-	// If multiple, pick the one closest in time
 	best := candidates[0]
 	for _, c := range candidates[1:] {
 		if c.timeDiff < best.timeDiff {
@@ -318,25 +338,28 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 		}
 	}
 
-	// If best is outside the window AND there's only one candidate, still use it.
-	// If multiple and best is outside window, warn but still use it.
 	if len(candidates) > 1 && best.timeDiff > window {
 		telemetry.Warnf("ticker: doubleheader best match for %s vs %s is %v away (window=%v)",
 			homeNorm, awayNorm, best.timeDiff, window)
 	}
 
+	eventTicker := ""
+	if len(best.teamMarkets) > 0 {
+		eventTicker = best.teamMarkets[0].EventTicker
+	}
 	result := &ResolvedTickers{
-		EventTicker: best.market.EventTicker,
+		EventTicker: eventTicker,
 		Prices:      make(map[string]TickerSnapshot),
 	}
-	m := best.market
-	yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
-	if fuzzyContains(yesTeam, homeNorm) {
-		result.HomeTicker = m.Ticker
-	} else if fuzzyContains(yesTeam, awayNorm) {
-		result.AwayTicker = m.Ticker
+	for _, m := range best.teamMarkets {
+		yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
+		if fuzzyContains(yesTeam, homeNorm) {
+			result.HomeTicker = m.Ticker
+		} else if fuzzyContains(yesTeam, awayNorm) {
+			result.AwayTicker = m.Ticker
+		}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 	}
-	result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 	return result
 }
 
@@ -522,8 +545,28 @@ func normalizeYesSubTitle(label string, aliases map[string]string) string {
 	return Normalize(label, aliases)
 }
 
+// youthTags are suffixes that distinguish youth/reserve squads from senior teams.
+// If one name has a youth tag and the other doesn't, they must not match.
+var youthTags = []string{
+	"u15", "u16", "u17", "u18", "u19", "u20", "u21", "u23",
+	"reserves", "reserve", "youth", "junior", "juniors",
+	"ii", "b team",
+}
+
+func hasYouthTag(name string) bool {
+	for _, tag := range youthTags {
+		if strings.HasSuffix(name, " "+tag) || strings.Contains(name, " "+tag+" ") {
+			return true
+		}
+	}
+	return false
+}
+
 func fuzzyContains(a, b string) bool {
 	if a == "" || b == "" {
+		return false
+	}
+	if hasYouthTag(a) != hasYouthTag(b) {
 		return false
 	}
 	return a == b || strings.Contains(a, b) || strings.Contains(b, a)

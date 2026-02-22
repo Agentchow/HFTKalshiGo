@@ -21,6 +21,8 @@ sports:
         max_game_cents: 3000
       echl:
         max_game_cents: 5000
+      elh:
+        max_game_cents: 5000
 
   soccer:
     max_sport_cents: 20000

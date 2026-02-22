@@ -55,15 +55,20 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	homeShort := shortName(ss.HomeTeam)
 	awayShort := shortName(ss.AwayTeam)
 
+	wsTag := ""
+	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
+		wsTag = "  [WS DOWN]"
+	}
+
 	var b strings.Builder
 	if gc.KalshiEventURL != "" {
-		fmt.Fprintf(&b, "\n[%s %s]  %s\n", eventType, ts, gc.KalshiEventURL)
+		fmt.Fprintf(&b, "\n[%s %s]  %s%s\n", eventType, ts, gc.KalshiEventURL, wsTag)
 	} else {
-		fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)
+		fmt.Fprintf(&b, "\n[%s %s]%s\n", eventType, ts, wsTag)
 	}
 	fmt.Fprintf(&b, "%s\n", divider)
 	fmt.Fprintf(&b, "  %s vs %s\n", ss.HomeTeam, ss.AwayTeam)
-	fmt.Fprintf(&b, "    %-38s%s %.0f%%  |  Draw %.0f%%  |  %s %.0f%%  |  G0=%.2f\n",
+	fmt.Fprintf(&b, "    %-38s%s %.0f%%  |  Tie %.0f%%  |  %s %.0f%%  |  G0=%.2f\n",
 		"Pregame:", homeShort, ss.HomeWinPct*100, ss.DrawPct*100, awayShort, ss.AwayWinPct*100, ss.G0)
 	scoreLine := fmt.Sprintf("Score %d-%d  |  %s (~%.0f min left)", ss.HomeScore, ss.AwayScore, ss.Half, ss.TimeLeft)
 	if ss.HomeRedCards > 0 || ss.AwayRedCards > 0 {
@@ -74,7 +79,7 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	hasKalshi := homeYes > 0 || homeNo > 0 || drawYes > 0 || drawNo > 0 || awayYes > 0 || awayNo > 0
 
 	// 3-column header
-	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", homeShort, "DRAW", awayShort)
+	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", homeShort, "TIE", awayShort)
 	if hasKalshi {
 		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
 	} else {
@@ -114,10 +119,10 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 		}{
 			{homeShort, "YES", edgeHomeYes},
 			{awayShort, "YES", edgeAwayYes},
-			{"Draw", "YES", edgeDrawYes},
+			{"Tie", "YES", edgeDrawYes},
 			{homeShort, "NO", edgeHomeNo},
 			{awayShort, "NO", edgeAwayNo},
-			{"Draw", "NO", edgeDrawNo},
+			{"Tie", "NO", edgeDrawNo},
 		} {
 			if e.val >= 3.0 {
 				edges = append(edges, fmt.Sprintf("%s %s %+.1f%%", e.name, e.side, e.val))

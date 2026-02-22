@@ -78,6 +78,12 @@ func UnmarshalEvent(data []byte) (events.Event, error) {
 			return evt, fmt.Errorf("unmarshal red_card: %w", err)
 		}
 		evt.Payload = rc
+	case events.EventWSStatus:
+		var ws events.WSStatusEvent
+		if err := json.Unmarshal(env.Payload, &ws); err != nil {
+			return evt, fmt.Errorf("unmarshal ws_status: %w", err)
+		}
+		evt.Payload = ws
 	default:
 		return evt, fmt.Errorf("unknown event type: %s", env.Type)
 	}

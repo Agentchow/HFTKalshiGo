@@ -31,6 +31,8 @@ const (
 	EventGameFinish  EventType = "game_finish"
 	// Kalshi Ticker Events
 	EventMarketData EventType = "market_data"
+	// Kalshi WebSocket status
+	EventWSStatus EventType = "ws_status"
 	// Internal Order Events
 	EventOrderIntent EventType = "order_intent"
 )

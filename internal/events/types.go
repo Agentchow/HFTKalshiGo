@@ -73,3 +73,8 @@ type RedCardEvent struct {
 	Team                  int     `json:"team"` // 1=home, 2=away
 	MinutesRemainingAtRed float64 `json:"minutes_remaining_at_red"`
 }
+
+// WSStatusEvent signals Kalshi WebSocket connect/disconnect to sport processes.
+type WSStatusEvent struct {
+	Connected bool `json:"connected"`
+}

@@ -75,7 +75,10 @@ func (c *Client) runLoop(ctx context.Context) {
 			telemetry.Infof("Kalshi WS reconnected")
 		}
 
+		c.publishWSStatus(true)
 		c.readLoop(ctx)
+
+		c.publishWSStatus(false)
 
 		select {
 		case <-ctx.Done():
@@ -126,6 +129,14 @@ func (c *Client) readLoop(ctx context.Context) {
 			c.bus.Publish(evt)
 		}
 	}
+}
+
+func (c *Client) publishWSStatus(connected bool) {
+	c.bus.Publish(events.Event{
+		Type:      events.EventWSStatus,
+		Timestamp: time.Now(),
+		Payload:   events.WSStatusEvent{Connected: connected},
+	})
 }
 
 func (c *Client) Close() error {

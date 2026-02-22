@@ -45,6 +45,7 @@ func NewServer(bus *events.Bus) *Server {
 	bus.Subscribe(events.EventGameFinish, s.forward)
 	bus.Subscribe(events.EventRedCard, s.forward)
 	bus.Subscribe(events.EventMarketData, s.forward)
+	bus.Subscribe(events.EventWSStatus, s.forward)
 	return s
 }
 

@@ -34,6 +34,7 @@ func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Regis
 	bus.Subscribe(events.EventScoreChange, e.onScoreChange)
 	bus.Subscribe(events.EventGameFinish, e.onGameFinish)
 	bus.Subscribe(events.EventMarketData, e.onMarketData)
+	bus.Subscribe(events.EventWSStatus, e.onWSStatus)
 
 	return e
 }
@@ -163,6 +164,7 @@ func (e *Engine) onMarketData(evt events.Event) error {
 
 	for _, gc := range targets {
 		gc.Send(func() {
+			gc.KalshiConnected = true
 			gc.UpdateTicker(td)
 
 			if !gc.Game.HasLiveData() || !gc.DisplayedLive {
@@ -184,6 +186,35 @@ func (e *Engine) onMarketData(evt events.Event) error {
 			if strat.HasSignificantEdge(gc) {
 				gc.LastEdgeDisplay = time.Now()
 				printGame(gc, "EDGE")
+			}
+		})
+	}
+	return nil
+}
+
+func (e *Engine) onWSStatus(evt events.Event) error {
+	ws, ok := evt.Payload.(events.WSStatusEvent)
+	if !ok {
+		return nil
+	}
+
+	connected := ws.Connected
+	if connected {
+		telemetry.Infof("strategy: Kalshi WS reconnected, restoring live prices")
+	} else {
+		telemetry.Warnf("strategy: Kalshi WS disconnected, resetting all ticker prices to 100")
+	}
+
+	for _, gc := range e.store.All() {
+		gc.Send(func() {
+			gc.KalshiConnected = connected
+			if !connected {
+				for _, td := range gc.Tickers {
+					td.YesAsk = 100
+					td.YesBid = 100
+					td.NoAsk = 100
+					td.NoBid = 100
+				}
 			}
 		})
 	}
@@ -237,6 +268,7 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 	}
 
 	gc.Send(func() {
+		gc.KalshiConnected = true
 		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
 		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
 

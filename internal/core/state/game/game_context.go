@@ -58,6 +58,10 @@ type GameContext struct {
 	// KalshiEventURL is the link to the Kalshi event page for this game.
 	KalshiEventURL string
 
+	// KalshiConnected is true when the Kalshi WS feed is live.
+	// When false, ticker prices are stale and should not be displayed.
+	KalshiConnected bool
+
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time
 

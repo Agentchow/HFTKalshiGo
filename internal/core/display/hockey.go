@@ -42,6 +42,8 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 		awayNo = td.NoAsk
 	}
 
+	hasTicker := hs.HomeTicker != "" || hs.AwayTicker != ""
+
 	// Pinnacle
 	pinnacle := fmt.Sprintf("%s %.1f%%  |  %s %.1f%%", homeShort, pctOrZero(hs.PinnacleHomePct), awayShort, pctOrZero(hs.PinnacleAwayPct))
 	if hs.PinnacleHomePct == nil || hs.PinnacleAwayPct == nil {
@@ -52,8 +54,17 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	bestHome := homeYes
 	bestAway := awayYes
 
+	wsTag := ""
+	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
+		wsTag = "  [WS DOWN]"
+	}
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)
+	if gc.KalshiEventURL != "" {
+		fmt.Fprintf(&b, "\n[%s %s]  %s%s\n", eventType, ts, gc.KalshiEventURL, wsTag)
+	} else {
+		fmt.Fprintf(&b, "\n[%s %s]%s\n", eventType, ts, wsTag)
+	}
 	fmt.Fprintf(&b, "%s\n", divider)
 	fmt.Fprintf(&b, "  %s @ %s\n", hs.AwayTeam, hs.HomeTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
@@ -61,23 +72,16 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",
 		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft)
 	hasKalshi := homeYes > 0 || homeNo > 0 || awayYes > 0 || awayNo > 0
-	if hs.HomeTicker != "" {
+	if hasTicker {
 		if hasKalshi {
-			fmt.Fprintf(&b, "    Kalshi  %-28sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)
+			fmt.Fprintf(&b, "    Kalshi  %-30sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)
+			fmt.Fprintf(&b, "            %-30sYes %2.0fc  |  No %2.0fc\n", awayShort+":", awayYes, awayNo)
+			fmt.Fprintf(&b, "    %-38s%s: %.0fc  |  %s %.0fc\n",
+				"Best odds:", homeShort, bestHome, awayShort, bestAway)
 		} else {
-			fmt.Fprintf(&b, "    Kalshi  %-28sYes  —   |  No  —\n", homeShort+":")
+			fmt.Fprintf(&b, "    Kalshi  %-30sYes  —   |  No  —\n", homeShort+":")
+			fmt.Fprintf(&b, "            %-30sYes  —   |  No  —\n", awayShort+":")
 		}
-	}
-	if hs.AwayTicker != "" {
-		if hasKalshi {
-			fmt.Fprintf(&b, "            %-28sYes %2.0fc  |  No %2.0fc\n", awayShort+":", awayYes, awayNo)
-		} else {
-			fmt.Fprintf(&b, "            %-28sYes  —   |  No  —\n", awayShort+":")
-		}
-	}
-	if (hs.HomeTicker != "" || hs.AwayTicker != "") && hasKalshi {
-		fmt.Fprintf(&b, "    %-38s%s: %.0fc  |  %s %.0fc\n",
-			"Best odds:", homeShort, bestHome, awayShort, bestAway)
 	}
 	fmt.Fprintf(&b, "    %-38s%s\n", "Pinnacle:", pinnacle)
 	if hs.ModelHomePct > 0 || hs.ModelAwayPct > 0 {

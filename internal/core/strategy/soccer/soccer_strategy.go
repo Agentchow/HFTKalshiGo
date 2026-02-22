@@ -29,14 +29,13 @@ type Strategy struct {
 	pregameCache   []goalserve_http.PregameOdds
 	pregameFetch   time.Time
 	pregameLastTry time.Time
-	pregameApplied map[string]bool
+	pregameApplied sync.Map
 }
 
 func NewStrategy(scoreDropConfirmSec int, pregame *goalserve_http.PregameClient) *Strategy {
 	s := &Strategy{
 		scoreDropConfirmSec: scoreDropConfirmSec,
 		pregame:             pregame,
-		pregameApplied:      make(map[string]bool),
 	}
 	if pregame != nil {
 		s.refreshPregameCache()
@@ -53,11 +52,13 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 	var displayEvents []string
 
 	// Apply pregame odds on first encounter.
-	if s.pregame != nil && !s.pregameApplied[gc.EID] {
-		if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
-			s.pregameApplied[gc.EID] = true
-			if gc.DisplayedLive {
-				displayEvents = append(displayEvents, "LIVE")
+	if s.pregame != nil {
+		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
+			if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
+				s.pregameApplied.Store(gc.EID, true)
+				if gc.DisplayedLive {
+					displayEvents = append(displayEvents, "LIVE")
+				}
 			}
 		}
 	}

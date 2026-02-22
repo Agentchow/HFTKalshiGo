@@ -38,6 +38,16 @@ type Config struct {
 	NgrokAuthToken string
 	NgrokDomain    string
 
+	// Fanout (inter-process relay)
+	FanoutPort int    // port the central fanout server listens on
+	FanoutAddr string // address sport processes connect to
+
+	// Rate limiting
+	RateDivisor int // divide Kalshi rate limits by this (set to N when running N sport processes)
+
+	// Tickers
+	TickersConfigDir string // path to directory containing {Sport}/tickers_config.json files
+
 	// Telemetry
 	LogLevel string
 }
@@ -83,6 +93,12 @@ func Load() *Config {
 		NgrokEnabled:   envStr("NGROK_ENABLED", "true") == "true",
 		NgrokAuthToken: envStr("NGROK_AUTH_TOKEN", ""),
 		NgrokDomain:    envStr("NGROK_DOMAIN", ""),
+
+		FanoutPort:  envInt("FANOUT_PORT", 9100),
+		FanoutAddr:  envStr("FANOUT_ADDR", "localhost:9100"),
+		RateDivisor: envInt("RATE_DIVISOR", 1),
+
+		TickersConfigDir: envStr("TICKERS_CONFIG_DIR", ""),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

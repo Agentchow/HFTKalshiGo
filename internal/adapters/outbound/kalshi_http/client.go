@@ -22,15 +22,20 @@ type Client struct {
 	writeLimiter *rate.Limiter
 }
 
-func NewClient(baseURL string, signer *kalshi_auth.Signer) *Client {
+func NewClient(baseURL string, signer *kalshi_auth.Signer, rateDivisor int) *Client {
+	if rateDivisor < 1 {
+		rateDivisor = 1
+	}
+	readRate := rate.Limit(20 / float64(rateDivisor))
+	writeRate := rate.Limit(10 / float64(rateDivisor))
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
 		signer:       signer,
-		readLimiter:  rate.NewLimiter(rate.Limit(20), 20),
-		writeLimiter: rate.NewLimiter(rate.Limit(10), 10),
+		readLimiter:  rate.NewLimiter(readRate, max(1, 20/rateDivisor)),
+		writeLimiter: rate.NewLimiter(writeRate, max(1, 10/rateDivisor)),
 	}
 }
 

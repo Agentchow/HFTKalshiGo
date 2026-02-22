@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,34 +16,19 @@ import (
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
-	"github.com/charleschow/hft-trading/internal/core/execution"
-	"github.com/charleschow/hft-trading/internal/core/execution/lanes"
-	"github.com/charleschow/hft-trading/internal/core/state/store"
-	"github.com/charleschow/hft-trading/internal/core/strategy"
-	footballStrat "github.com/charleschow/hft-trading/internal/core/strategy/football"
-	hockeyStrat "github.com/charleschow/hft-trading/internal/core/strategy/hockey"
-	soccerStrat "github.com/charleschow/hft-trading/internal/core/strategy/soccer"
-	"github.com/charleschow/hft-trading/internal/core/ticker"
 	"github.com/charleschow/hft-trading/internal/events"
+	"github.com/charleschow/hft-trading/internal/fanout"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
 func main() {
 	cfg := config.Load()
-	telemetry.Init(parseLogLevel(cfg.LogLevel))
-	telemetry.Infof("Starting system")
+	telemetry.Init(telemetry.ParseLogLevel(cfg.LogLevel))
+	telemetry.Infof("Starting central infrastructure")
 
 	bus := events.NewBus()
-	gameStore := store.New()
 
-	// ── Risk limits ─────────────────────────────────────────────
-	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
-	if err != nil {
-		telemetry.Errorf("Failed to load risk limits: %v", err)
-		os.Exit(1)
-	}
-
-	// ── Kalshi auth + clients ───────────────────────────────────
+	// ── Kalshi auth ────────────────────────────────────────────
 	kalshiSigner, err := kalshi_auth.NewSignerFromFile(cfg.KalshiKeyID, cfg.KalshiKeyFile)
 	if err != nil {
 		telemetry.Errorf("Kalshi auth: %v", err)
@@ -56,32 +40,31 @@ func main() {
 	}
 	telemetry.Infof("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
 
-	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner)
+	// ── Balance fetch ──────────────────────────────────────────
+	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner, cfg.RateDivisor)
+	balance, err := kalshiClient.GetBalance(context.Background())
+	if err != nil {
+		telemetry.Warnf("Balance fetch failed: %v", err)
+	} else {
+		telemetry.Infof("Kalshi balance: $%.2f", float64(balance)/100.0)
+	}
 
-	// ── Ticker resolver ────────────────────────────────────────
-	tickerResolver := ticker.NewResolver(kalshiClient)
+	// ── Fanout server ──────────────────────────────────────────
+	fanoutServer := fanout.NewServer(bus)
+	go func() {
+		if err := fanoutServer.ListenAndServe(cfg.FanoutPort); err != nil {
+			telemetry.Errorf("Fanout server: %v", err)
+			os.Exit(1)
+		}
+	}()
 
-	// ── Strategies ──────────────────────────────────────────────
-	registry := strategy.NewRegistry()
-	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
-
-	// ── Execution lanes ─────────────────────────────────────────
-	laneRouter := execution.NewLaneRouter()
-	registerSportLanes(laneRouter, riskLimits, events.SportHockey, "hockey")
-	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
-	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
-	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
-
-	// ── Webhook payload store ───────────────────────────────────
+	// ── Webhook payload store ──────────────────────────────────
 	webhookStore, err := goalserve_webhook.OpenStore(cfg.WebhookStorePath)
 	if err != nil {
 		telemetry.Warnf("Webhook store disabled: %v", err)
 	}
 
-	// ── Webhook server ──────────────────────────────────────────
+	// ── Webhook server ─────────────────────────────────────────
 	webhookHandler := goalserve_webhook.NewHandler(bus, webhookStore)
 	mux := http.NewServeMux()
 	webhookHandler.RegisterRoutes(mux)
@@ -103,7 +86,7 @@ func main() {
 	}()
 	telemetry.Infof("Webhook listening on %q", addr)
 
-	// ── ngrok ───────────────────────────────────────────────────
+	// ── ngrok ──────────────────────────────────────────────────
 	var ngrokProc *os.Process
 	if cfg.NgrokEnabled {
 		proc, publicURL, err := startNgrok(cfg.WebhookPort, cfg.NgrokAuthToken, cfg.NgrokDomain)
@@ -115,7 +98,7 @@ func main() {
 		}
 	}
 
-	// ── Kalshi WebSocket ────────────────────────────────────────
+	// ── Kalshi WebSocket ───────────────────────────────────────
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -126,7 +109,7 @@ func main() {
 		}
 	}()
 
-	// ── Shutdown ────────────────────────────────────────────────
+	// ── Shutdown ───────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
@@ -147,12 +130,9 @@ func main() {
 		webhookStore.Close()
 	}
 
-	telemetry.Infof("Shutdown complete  webhooks=%d  events=%d  scores=%d  orders=%d  errors=%d",
+	telemetry.Infof("Shutdown complete  webhooks=%d  events=%d",
 		telemetry.Metrics.WebhooksReceived.Value(),
 		telemetry.Metrics.EventsProcessed.Value(),
-		telemetry.Metrics.ScoreChanges.Value(),
-		telemetry.Metrics.OrdersSent.Value(),
-		telemetry.Metrics.OrderErrors.Value(),
 	)
 }
 
@@ -212,37 +192,4 @@ func queryNgrokAPI() (string, error) {
 		return result.Tunnels[0].PublicURL, nil
 	}
 	return "", nil
-}
-
-func registerSportLanes(router *execution.LaneRouter, rl config.RiskLimits, sport events.Sport, sportKey string) {
-	sl, ok := rl.SportLimit(sportKey)
-	if !ok {
-		router.Register(sport, "*", lanes.NewLane(5000, 50000))
-		return
-	}
-
-	sportSpend := lanes.NewSpendGuard(sl.MaxSportCents)
-
-	if len(sl.Leagues) == 0 {
-		router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
-		return
-	}
-
-	for league, ll := range sl.Leagues {
-		router.Register(sport, league, lanes.NewLaneWithSpend(ll.MaxGameCents, sportSpend))
-	}
-	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
-}
-
-func parseLogLevel(level string) slog.Level {
-	switch level {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
 }

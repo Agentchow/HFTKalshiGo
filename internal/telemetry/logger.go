@@ -28,6 +28,20 @@ func Warnf(format string, args ...any)  { L().Warn(fmt.Sprintf(format, args...))
 func Errorf(format string, args ...any) { L().Error(fmt.Sprintf(format, args...)) }
 func Debugf(format string, args ...any) { L().Debug(fmt.Sprintf(format, args...)) }
 
+// ParseLogLevel converts a string level name to slog.Level.
+func ParseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 // prettyHandler outputs: [2026-02-21 5:10:39 PM PST] message
 type prettyHandler struct {
 	w     io.Writer

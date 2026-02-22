@@ -44,3 +44,19 @@ func (lr *LaneRouter) Route(sport events.Sport, league string) *lanes.Lane {
 	}
 	return nil
 }
+
+// RegisterSportLanes wires risk limits for a single sport into the router.
+func RegisterSportLanes(router *LaneRouter, maxSportCents int, leagueLimits map[string]int, sport events.Sport) {
+	sportSpend := lanes.NewSpendGuard(maxSportCents)
+
+	if len(leagueLimits) == 0 {
+		router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
+		return
+	}
+
+	for league, maxGameCents := range leagueLimits {
+		router.Register(sport, league, lanes.NewLaneWithSpend(maxGameCents, sportSpend))
+	}
+	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
+}
+

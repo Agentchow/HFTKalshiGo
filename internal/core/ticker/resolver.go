@@ -2,17 +2,22 @@ package ticker
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
-// SeriesTickers lists the Kalshi series to fetch per sport.
-var SeriesTickers = map[events.Sport][]string{
+// defaultSeriesTickers is the hardcoded fallback when no config file is found.
+var defaultSeriesTickers = map[events.Sport][]string{
 	events.SportHockey: {
 		"KXAHLGAME", "KXNHLGAME", "KXKHLGAME", "KXSHLGAME", "KXLIIGAGAME",
 		"KXWOMHOCKEY", "KXWOWHOCKEY",
@@ -32,6 +37,51 @@ var SeriesTickers = map[events.Sport][]string{
 	},
 }
 
+// sportConfigDir maps a Sport value to its directory name inside the config dir.
+var sportConfigDir = map[events.Sport]string{
+	events.SportHockey:   "Hockey",
+	events.SportSoccer:   "Soccer",
+	events.SportFootball: "Football",
+}
+
+type tickersConfig struct {
+	SeriesTickers []string `json:"series_tickers"`
+}
+
+// loadSeriesTickers reads {dir}/{SportDir}/tickers_config.json and returns
+// the series_tickers list (uppercased). Returns the hardcoded default if the
+// dir is empty or the file cannot be read.
+func loadSeriesTickers(dir string, sport events.Sport) []string {
+	if dir == "" {
+		return defaultSeriesTickers[sport]
+	}
+	subdir, ok := sportConfigDir[sport]
+	if !ok {
+		return defaultSeriesTickers[sport]
+	}
+	path := filepath.Join(dir, subdir, "tickers_config.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		telemetry.Warnf("ticker: config file %s not found, using hardcoded defaults for %s", path, sport)
+		return defaultSeriesTickers[sport]
+	}
+	var cfg tickersConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		telemetry.Warnf("ticker: failed to parse %s: %v, using hardcoded defaults for %s", path, err, sport)
+		return defaultSeriesTickers[sport]
+	}
+	if len(cfg.SeriesTickers) == 0 {
+		telemetry.Warnf("ticker: %s has empty series_tickers, using hardcoded defaults for %s", path, sport)
+		return defaultSeriesTickers[sport]
+	}
+	upper := make([]string, len(cfg.SeriesTickers))
+	for i, t := range cfg.SeriesTickers {
+		upper[i] = strings.ToUpper(t)
+	}
+	telemetry.Infof("ticker: loaded %d series for %s from %s", len(upper), sport, path)
+	return upper
+}
+
 // ResolvedTickers is the result of resolving a game to Kalshi tickers.
 type ResolvedTickers struct {
 	HomeTicker string
@@ -41,22 +91,30 @@ type ResolvedTickers struct {
 
 // Resolver fetches Kalshi markets and matches them to games by team name.
 type Resolver struct {
-	client  *kalshi_http.Client
-	mu      sync.RWMutex
-	markets map[events.Sport][]kalshi_http.Market
-	lastFetch map[events.Sport]time.Time
-	aliases map[events.Sport]map[string]string
+	client        *kalshi_http.Client
+	mu            sync.RWMutex
+	markets       map[events.Sport][]kalshi_http.Market
+	lastFetch     map[events.Sport]time.Time
+	aliases       map[events.Sport]map[string]string
+	seriesTickers map[events.Sport][]string
+	sfGroup       singleflight.Group
 }
 
-func NewResolver(client *kalshi_http.Client) *Resolver {
+func NewResolver(client *kalshi_http.Client, tickersConfigDir string) *Resolver {
+	series := make(map[events.Sport][]string)
+	for _, sport := range []events.Sport{events.SportHockey, events.SportSoccer, events.SportFootball} {
+		series[sport] = loadSeriesTickers(tickersConfigDir, sport)
+	}
+
 	return &Resolver{
-		client:    client,
-		markets:   make(map[events.Sport][]kalshi_http.Market),
-		lastFetch: make(map[events.Sport]time.Time),
+		client:        client,
+		markets:       make(map[events.Sport][]kalshi_http.Market),
+		lastFetch:     make(map[events.Sport]time.Time),
+		seriesTickers: series,
 		aliases: map[events.Sport]map[string]string{
 			events.SportHockey:   HockeyAliases,
 			events.SportSoccer:   SoccerAliases,
-			events.SportFootball: {}, // football uses same names generally
+			events.SportFootball: {},
 		},
 	}
 }
@@ -71,8 +129,8 @@ const matchWindowSoccer = 16 * time.Hour
 
 // RefreshMarkets fetches all open markets for a sport from Kalshi.
 func (r *Resolver) RefreshMarkets(ctx context.Context, sport events.Sport) error {
-	series, ok := SeriesTickers[sport]
-	if !ok {
+	series := r.seriesTickers[sport]
+	if len(series) == 0 {
 		return nil
 	}
 

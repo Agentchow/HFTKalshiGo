@@ -38,6 +38,14 @@ type Config struct {
 	NgrokAuthToken string
 	NgrokDomain    string
 
+	// Discord
+	DiscordWebhookURL string
+
+	// Inplay collector (Pinnacle proxy training data)
+	InplayCollectorEnabled bool
+	InplayCollectorDBPath  string
+	InplayPollIntervalSec  int
+
 	// Telemetry
 	LogLevel string
 }
@@ -83,6 +91,12 @@ func Load() *Config {
 		NgrokEnabled:   envStr("NGROK_ENABLED", "true") == "true",
 		NgrokAuthToken: envStr("NGROK_AUTH_TOKEN", ""),
 		NgrokDomain:    envStr("NGROK_DOMAIN", ""),
+
+		DiscordWebhookURL: envStr("DISCORD_WEBHOOK_URL", ""),
+
+		InplayCollectorEnabled: envStr("INPLAY_COLLECTOR_ENABLED", "false") == "true",
+		InplayCollectorDBPath:  envStr("INPLAY_COLLECTOR_DB_PATH", "data/inplay_samples.db"),
+		InplayPollIntervalSec:  envInt("INPLAY_POLL_INTERVAL_SEC", 60),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

@@ -15,6 +15,8 @@ import (
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/goalserve_webhook"
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
+	"github.com/charleschow/hft-trading/internal/adapters/outbound/discord"
+	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
 	"github.com/charleschow/hft-trading/internal/core/execution"
@@ -57,6 +59,37 @@ func main() {
 	telemetry.Infof("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
 
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner)
+	balanceCache := kalshi_http.NewBalanceCache(kalshiClient, 5*time.Second, 3*time.Minute)
+
+	// ── GoalServe API client ───────────────────────────────────
+	var gsClient *goalserve.Client
+	if cfg.GoalserveAPIKey != "" {
+		gsClient = goalserve.NewClient(cfg.GoalserveAPIKey)
+		telemetry.Infof("GoalServe API client initialized")
+	}
+
+	// ── Discord notifier ───────────────────────────────────────
+	discordNotifier := discord.NewNotifier(cfg.DiscordWebhookURL)
+	if discordNotifier.Enabled() {
+		telemetry.Infof("Discord notifications enabled")
+	}
+
+	// ── Inplay collector (Pinnacle proxy training data) ────────
+	var inplayCollector *goalserve.InplayCollector
+	if cfg.InplayCollectorEnabled && gsClient != nil {
+		var err error
+		inplayCollector, err = goalserve.NewInplayCollector(
+			gsClient,
+			cfg.InplayCollectorDBPath,
+			[]string{"soccer", "hockey"},
+			time.Duration(cfg.InplayPollIntervalSec)*time.Second,
+		)
+		if err != nil {
+			telemetry.Warnf("Inplay collector disabled: %v", err)
+		} else {
+			inplayCollector.Start()
+		}
+	}
 
 	// ── Ticker resolver ────────────────────────────────────────
 	tickerResolver := ticker.NewResolver(kalshiClient)
@@ -142,6 +175,12 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	server.Shutdown(shutdownCtx)
+
+	balanceCache.Stop()
+
+	if inplayCollector != nil {
+		inplayCollector.Stop()
+	}
 
 	if webhookStore != nil {
 		webhookStore.Close()

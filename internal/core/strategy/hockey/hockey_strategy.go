@@ -5,11 +5,15 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
+	parentStrategy "github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
-const discrepancyPct = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an order
+const (
+	discrepancyPct = 3.0   // base edge threshold (%)
+	rampSec        = 300.0 // ramp window before game end (seconds)
+)
 
 // Strategy implements the hockey-specific trading logic.
 // On each score change it:
@@ -143,7 +147,8 @@ func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState,
 
 		kalshiPct := td.YesAsk // yes_ask is already in cents (0-100)
 		diff := edge.modelPct - kalshiPct
-		if diff < discrepancyPct {
+		threshold := parentStrategy.EffectiveThreshold(hs.TimeLeft, discrepancyPct, rampSec)
+		if diff < threshold {
 			continue
 		}
 

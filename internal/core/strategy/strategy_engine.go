@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/core/display"
@@ -21,6 +22,8 @@ type Engine struct {
 	store    *store.GameStateStore
 	registry *Registry
 	resolver *ticker.Resolver
+
+	kalshiWSUp atomic.Bool
 }
 
 func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver) *Engine {
@@ -199,6 +202,8 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	}
 
 	connected := ws.Connected
+	e.kalshiWSUp.Store(connected)
+
 	if connected {
 		telemetry.Infof("strategy: Kalshi WS reconnected, restoring live prices")
 	} else {
@@ -268,7 +273,7 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 	}
 
 	gc.Send(func() {
-		gc.KalshiConnected = true
+		gc.KalshiConnected = e.kalshiWSUp.Load()
 		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
 		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
 

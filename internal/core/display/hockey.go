@@ -72,6 +72,9 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",
 		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft)
 	hasKalshi := homeYes > 0 || homeNo > 0 || awayYes > 0 || awayNo > 0
+	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
+		fmt.Fprintf(&b, "    *** Kalshi WS disconnected — prices stale ***\n")
+	}
 	if hasTicker {
 		if hasKalshi {
 			fmt.Fprintf(&b, "    Kalshi  %-30sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)

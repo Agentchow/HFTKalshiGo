@@ -62,7 +62,7 @@ func (s *Server) forward(evt events.Event) error {
 	defer s.mu.Unlock()
 
 	for c := range s.clients {
-		if evt.Type != events.EventMarketData && c.sport != evt.Sport {
+		if evt.Type != events.EventMarketData && evt.Type != events.EventWSStatus && c.sport != evt.Sport {
 			continue
 		}
 		select {

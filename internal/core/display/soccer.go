@@ -80,6 +80,9 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 
 	// 3-column header
 	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", homeShort, "TIE", awayShort)
+	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
+		fmt.Fprintf(&b, "    *** Kalshi WS disconnected — prices stale ***\n")
+	}
 	if hasKalshi {
 		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
 	} else {

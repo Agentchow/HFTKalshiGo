@@ -66,7 +66,7 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 		fmt.Fprintf(&b, "\n[%s %s]%s\n", eventType, ts, wsTag)
 	}
 	fmt.Fprintf(&b, "%s\n", divider)
-	fmt.Fprintf(&b, "  %s @ %s\n", hs.AwayTeam, hs.HomeTeam)
+	fmt.Fprintf(&b, "  %s vs %s\n", hs.HomeTeam, hs.AwayTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
 		"Pregame strength (Goalserve):", homeShort, hs.HomeWinPct*100, awayShort, hs.AwayWinPct*100)
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",

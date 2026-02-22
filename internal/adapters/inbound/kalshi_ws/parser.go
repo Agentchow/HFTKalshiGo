@@ -19,6 +19,8 @@ type tickerMsg struct {
 	MarketTicker string  `json:"market_ticker"`
 	YesAsk       float64 `json:"yes_ask"`
 	YesBid       float64 `json:"yes_bid"`
+	NoAsk        float64 `json:"no_ask"`
+	NoBid        float64 `json:"no_bid"`
 	Volume       int64   `json:"volume"`
 }
 
@@ -52,20 +54,12 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		return nil
 	}
 
-	var noAsk, noBid float64
-	if t.YesBid > 0 {
-		noAsk = 100 - t.YesBid
-	}
-	if t.YesAsk > 0 {
-		noBid = 100 - t.YesAsk
-	}
-
 	me := events.MarketEvent{
 		Ticker: t.MarketTicker,
 		YesAsk: t.YesAsk,
 		YesBid: t.YesBid,
-		NoAsk:  noAsk,
-		NoBid:  noBid,
+		NoAsk:  t.NoAsk,
+		NoBid:  t.NoBid,
 		Volume: t.Volume,
 	}
 

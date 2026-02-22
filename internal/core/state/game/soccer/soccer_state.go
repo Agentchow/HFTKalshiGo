@@ -230,3 +230,41 @@ func (s *SoccerState) SetTickers(home, away, draw string) {
 	s.AwayTicker = away
 	s.DrawTicker = draw
 }
+
+func (s *SoccerState) HasOrdered(outcome string) bool {
+	return s.orderedTrades[tradeScoreKey{key: outcome, homeScore: s.HomeScore, awayScore: s.AwayScore}]
+}
+
+func (s *SoccerState) MarkOrdered(outcome string) {
+	s.orderedTrades[tradeScoreKey{key: outcome, homeScore: s.HomeScore, awayScore: s.AwayScore}] = true
+}
+
+func (s *SoccerState) ClearOrdered() {
+	s.orderedTrades = make(map[tradeScoreKey]bool)
+}
+
+func (s *SoccerState) RedCardCounts() (home, away int) {
+	for _, rc := range s.RedCards {
+		if rc.Team == 1 {
+			home++
+		} else {
+			away++
+		}
+	}
+	return
+}
+
+func (s *SoccerState) HalfNumber() int {
+	h := strings.ToLower(strings.TrimSpace(s.Half))
+	if strings.Contains(h, "2nd") || strings.Contains(h, "second") {
+		return 2
+	}
+	return 1
+}
+
+func (s *SoccerState) SetPregameOdds(homeP, drawP, awayP, g0 float64) {
+	s.HomeWinPct = homeP
+	s.DrawPct = drawP
+	s.AwayWinPct = awayP
+	s.G0 = g0
+}

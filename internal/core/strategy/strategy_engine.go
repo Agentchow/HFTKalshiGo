@@ -154,28 +154,23 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 const edgeDisplayThrottle = 30 * time.Second
 
 // onMarketData routes Kalshi WS price updates to the correct game.
+//
+// IMPORTANT: Kalshi markets are NOT binary complements. Each outcome
+// (home, away, tie) has its own independent YES and NO order book with
+// real people posting offers. Prices are NOT derivable from each other
+// (e.g. NO ask != 100 - YES bid). Never synthesize or derive prices.
+//
+// The Kalshi WS sends PARTIAL ticker updates — only fields that changed
+// are included. A field missing from a WS message does NOT mean the
+// price is zero; it means nobody moved that side of the book since the
+// last update. We MERGE non-zero values into the existing TickerData
+// to preserve prices from the REST snapshot or earlier WS updates.
+// Replacing the entire TickerData would clobber valid prices with zeros
+// (which then hit the fallback and show 100c).
 func (e *Engine) onMarketData(evt events.Event) error {
 	me, ok := evt.Payload.(events.MarketEvent)
 	if !ok {
 		return nil
-	}
-
-	noAsk := me.NoAsk
-	noBid := me.NoBid
-	if noAsk == 0 {
-		noAsk = 100
-	}
-	if noBid == 0 {
-		noBid = 100
-	}
-
-	td := &game.TickerData{
-		Ticker: me.Ticker,
-		YesAsk: me.YesAsk,
-		YesBid: me.YesBid,
-		NoAsk:  noAsk,
-		NoBid:  noBid,
-		Volume: me.Volume,
 	}
 
 	targets := e.store.ByTicker(me.Ticker)
@@ -186,7 +181,28 @@ func (e *Engine) onMarketData(evt events.Event) error {
 	for _, gc := range targets {
 		gc.Send(func() {
 			gc.KalshiConnected = true
-			gc.UpdateTicker(td)
+			td := gc.Tickers[me.Ticker]
+			if td == nil {
+				td = &game.TickerData{Ticker: me.Ticker, NoAsk: 100, NoBid: 100}
+				gc.Tickers[me.Ticker] = td
+			}
+			if me.YesAsk > 0 {
+				td.YesAsk = me.YesAsk
+			}
+			if me.YesBid > 0 {
+				td.YesBid = me.YesBid
+			}
+			if me.NoAsk > 0 {
+				td.NoAsk = me.NoAsk
+			}
+			if me.NoBid > 0 {
+				td.NoBid = me.NoBid
+			}
+			if me.Volume > 0 {
+				td.Volume = me.Volume
+			}
+
+			gc.Game.RecalcEdge(gc.Tickers)
 
 			ds := e.display.Get(gc.EID)
 

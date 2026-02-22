@@ -76,10 +76,6 @@ type Market struct {
 	ExpectedExpirationTime string `json:"expected_expiration_time"`
 	CloseTime              string `json:"close_time"`
 	Volume                 int64  `json:"volume"`
-	YesAsk                 int    `json:"yes_ask"`
-	YesBid                 int    `json:"yes_bid"`
-	NoAsk                  int    `json:"no_ask"`
-	NoBid                  int    `json:"no_bid"`
 	YesAskDollars          string `json:"yes_ask_dollars"`
 	YesBidDollars          string `json:"yes_bid_dollars"`
 	NoAskDollars           string `json:"no_ask_dollars"`
@@ -87,53 +83,10 @@ type Market struct {
 	MutuallyExclusive      bool   `json:"mutually_exclusive"`
 }
 
-// EffectiveYesAsk returns the yes-ask price in cents, preferring the
-// dollar field when the deprecated integer field is zero.
-func (m Market) EffectiveYesAsk() int {
-	if m.YesAsk != 0 {
-		return m.YesAsk
-	}
-	if m.YesAskDollars != "" {
-		return dollarsToCentsInt(m.YesAskDollars)
-	}
-	return 0
-}
-
-// EffectiveYesBid returns the yes-bid price in cents, preferring the
-// dollar field when the deprecated integer field is zero.
-func (m Market) EffectiveYesBid() int {
-	if m.YesBid != 0 {
-		return m.YesBid
-	}
-	if m.YesBidDollars != "" {
-		return dollarsToCentsInt(m.YesBidDollars)
-	}
-	return 0
-}
-
-// EffectiveNoAsk returns the no-ask price in cents, preferring the
-// dollar field when the deprecated integer field is zero.
-func (m Market) EffectiveNoAsk() int {
-	if m.NoAsk != 0 {
-		return m.NoAsk
-	}
-	if m.NoAskDollars != "" {
-		return dollarsToCentsInt(m.NoAskDollars)
-	}
-	return 0
-}
-
-// EffectiveNoBid returns the no-bid price in cents, preferring the
-// dollar field when the deprecated integer field is zero.
-func (m Market) EffectiveNoBid() int {
-	if m.NoBid != 0 {
-		return m.NoBid
-	}
-	if m.NoBidDollars != "" {
-		return dollarsToCentsInt(m.NoBidDollars)
-	}
-	return 0
-}
+func (m Market) EffectiveYesAsk() int { return dollarsToCentsInt(m.YesAskDollars) }
+func (m Market) EffectiveYesBid() int { return dollarsToCentsInt(m.YesBidDollars) }
+func (m Market) EffectiveNoAsk() int  { return dollarsToCentsInt(m.NoAskDollars) }
+func (m Market) EffectiveNoBid() int  { return dollarsToCentsInt(m.NoBidDollars) }
 
 func dollarsToCentsInt(s string) int {
 	v, err := strconv.ParseFloat(s, 64)

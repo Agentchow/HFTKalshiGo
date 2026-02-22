@@ -17,16 +17,12 @@ type wsMessage struct {
 }
 
 type tickerMsg struct {
-	MarketTicker  string  `json:"market_ticker"`
-	YesAsk        float64 `json:"yes_ask"`
-	YesBid        float64 `json:"yes_bid"`
-	NoAsk         float64 `json:"no_ask"`
-	NoBid         float64 `json:"no_bid"`
-	YesAskDollars string  `json:"yes_ask_dollars"`
-	YesBidDollars string  `json:"yes_bid_dollars"`
-	NoAskDollars  string  `json:"no_ask_dollars"`
-	NoBidDollars  string  `json:"no_bid_dollars"`
-	Volume        int64   `json:"volume"`
+	MarketTicker  string `json:"market_ticker"`
+	YesAskDollars string `json:"yes_ask_dollars"`
+	YesBidDollars string `json:"yes_bid_dollars"`
+	NoAskDollars  string `json:"no_ask_dollars"`
+	NoBidDollars  string `json:"no_bid_dollars"`
+	Volume        int64  `json:"volume"`
 }
 
 // ParseMessage converts a raw WebSocket frame into domain events.
@@ -59,29 +55,12 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		return nil
 	}
 
-	yesAsk := t.YesAsk
-	if yesAsk == 0 && t.YesAskDollars != "" {
-		yesAsk = dollarsToCents(t.YesAskDollars)
-	}
-	yesBid := t.YesBid
-	if yesBid == 0 && t.YesBidDollars != "" {
-		yesBid = dollarsToCents(t.YesBidDollars)
-	}
-	noAsk := t.NoAsk
-	if noAsk == 0 && t.NoAskDollars != "" {
-		noAsk = dollarsToCents(t.NoAskDollars)
-	}
-	noBid := t.NoBid
-	if noBid == 0 && t.NoBidDollars != "" {
-		noBid = dollarsToCents(t.NoBidDollars)
-	}
-
 	me := events.MarketEvent{
 		Ticker: t.MarketTicker,
-		YesAsk: yesAsk,
-		YesBid: yesBid,
-		NoAsk:  noAsk,
-		NoBid:  noBid,
+		YesAsk: dollarsToCents(t.YesAskDollars),
+		YesBid: dollarsToCents(t.YesBidDollars),
+		NoAsk:  dollarsToCents(t.NoAskDollars),
+		NoBid:  dollarsToCents(t.NoBidDollars),
 		Volume: t.Volume,
 	}
 

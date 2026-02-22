@@ -44,13 +44,12 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	pinnAway := pctOrZero(ss.PinnacleAwayPct)
 	hasPinnacle := ss.PinnacleHomePct != nil && ss.PinnacleDrawPct != nil && ss.PinnacleAwayPct != nil
 
-	// Edge = Pinnacle - Kalshi (percentage points)
-	edgeHomeYes := pinnHome - homeYes
-	edgeDrawYes := pinnDraw - drawYes
-	edgeAwayYes := pinnAway - awayYes
-	edgeHomeNo := (100 - pinnHome) - homeNo
-	edgeDrawNo := (100 - pinnDraw) - drawNo
-	edgeAwayNo := (100 - pinnAway) - awayNo
+	edgeHomeYes := ss.EdgeHomeYes
+	edgeDrawYes := ss.EdgeDrawYes
+	edgeAwayYes := ss.EdgeAwayYes
+	edgeHomeNo := ss.EdgeHomeNo
+	edgeDrawNo := ss.EdgeDrawNo
+	edgeAwayNo := ss.EdgeAwayNo
 
 	homeShort := shortName(ss.HomeTeam)
 	awayShort := shortName(ss.AwayTeam)

@@ -33,6 +33,11 @@ type HockeyState struct {
 	PinnacleHomePct *float64 // 0–100
 	PinnacleAwayPct *float64 // 0–100
 
+	EdgeHomeYes float64
+	EdgeAwayYes float64
+	EdgeHomeNo  float64
+	EdgeAwayNo  float64
+
 	game.ScoreDropTracker
 
 	hasLiveData    bool
@@ -125,4 +130,35 @@ func (h *HockeyState) ClearOrdered() {
 func (h *HockeyState) SetTickers(home, away, _ string) {
 	h.HomeTicker = home
 	h.AwayTicker = away
+}
+
+func (h *HockeyState) RecalcEdge(tickers map[string]*game.TickerData) {
+	if h.ModelHomePct == 0 && h.ModelAwayPct == 0 {
+		return
+	}
+	h.EdgeHomeYes = edgeFor(h.ModelHomePct, yesAsk(tickers, h.HomeTicker))
+	h.EdgeAwayYes = edgeFor(h.ModelAwayPct, yesAsk(tickers, h.AwayTicker))
+	h.EdgeHomeNo = edgeFor(100-h.ModelHomePct, noAsk(tickers, h.HomeTicker))
+	h.EdgeAwayNo = edgeFor(100-h.ModelAwayPct, noAsk(tickers, h.AwayTicker))
+}
+
+func edgeFor(model, ask float64) float64 {
+	if ask <= 0 {
+		return 0
+	}
+	return model - ask
+}
+
+func yesAsk(tickers map[string]*game.TickerData, ticker string) float64 {
+	if td, ok := tickers[ticker]; ok {
+		return td.YesAsk
+	}
+	return -1
+}
+
+func noAsk(tickers map[string]*game.TickerData, ticker string) float64 {
+	if td, ok := tickers[ticker]; ok {
+		return td.NoAsk
+	}
+	return -1
 }

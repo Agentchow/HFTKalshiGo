@@ -78,6 +78,10 @@ type GameState interface {
 	ClearScoreDropPending()
 	IsScoreDropPending() bool
 	SetTickers(home, away, draw string)
+
+	// RecalcEdge recomputes model-vs-market edge from the current
+	// model/pinnacle probabilities and Kalshi ticker prices.
+	RecalcEdge(tickers map[string]*TickerData)
 }
 
 func NewGameContext(sport events.Sport, league, eid string, gs GameState) *GameContext {

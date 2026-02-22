@@ -147,22 +147,11 @@ func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
 	if !ok {
 		return false
 	}
-	if ss.PinnacleHomePct == nil || ss.PinnacleDrawPct == nil || ss.PinnacleAwayPct == nil {
-		return false
-	}
-	pairs := []struct {
-		pinn float64
-		ask  float64
-	}{
-		{*ss.PinnacleHomePct, gc.YesAsk(ss.HomeTicker)},
-		{*ss.PinnacleDrawPct, gc.YesAsk(ss.DrawTicker)},
-		{*ss.PinnacleAwayPct, gc.YesAsk(ss.AwayTicker)},
-		{100 - *ss.PinnacleHomePct, gc.NoAsk(ss.HomeTicker)},
-		{100 - *ss.PinnacleDrawPct, gc.NoAsk(ss.DrawTicker)},
-		{100 - *ss.PinnacleAwayPct, gc.NoAsk(ss.AwayTicker)},
-	}
-	for _, p := range pairs {
-		if p.ask > 0 && p.pinn-p.ask >= edgeThreshold {
+	for _, e := range []float64{
+		ss.EdgeHomeYes, ss.EdgeDrawYes, ss.EdgeAwayYes,
+		ss.EdgeHomeNo, ss.EdgeDrawNo, ss.EdgeAwayNo,
+	} {
+		if e >= edgeThreshold {
 			return true
 		}
 	}

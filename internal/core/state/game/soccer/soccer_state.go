@@ -43,6 +43,13 @@ type SoccerState struct {
 	PinnacleDrawPct *float64
 	PinnacleAwayPct *float64
 
+	EdgeHomeYes float64
+	EdgeDrawYes float64
+	EdgeAwayYes float64
+	EdgeHomeNo  float64
+	EdgeDrawNo  float64
+	EdgeAwayNo  float64
+
 	ExtraTimeSettlesML bool
 
 	game.ScoreDropTracker
@@ -186,4 +193,41 @@ func (s *SoccerState) SetTickers(home, away, draw string) {
 	s.HomeTicker = home
 	s.AwayTicker = away
 	s.DrawTicker = draw
+}
+
+func (s *SoccerState) RecalcEdge(tickers map[string]*game.TickerData) {
+	if s.PinnacleHomePct == nil || s.PinnacleDrawPct == nil || s.PinnacleAwayPct == nil {
+		return
+	}
+	pinnHome := *s.PinnacleHomePct
+	pinnDraw := *s.PinnacleDrawPct
+	pinnAway := *s.PinnacleAwayPct
+
+	s.EdgeHomeYes = edgeFor(pinnHome, yesAsk(tickers, s.HomeTicker))
+	s.EdgeDrawYes = edgeFor(pinnDraw, yesAsk(tickers, s.DrawTicker))
+	s.EdgeAwayYes = edgeFor(pinnAway, yesAsk(tickers, s.AwayTicker))
+	s.EdgeHomeNo = edgeFor(100-pinnHome, noAsk(tickers, s.HomeTicker))
+	s.EdgeDrawNo = edgeFor(100-pinnDraw, noAsk(tickers, s.DrawTicker))
+	s.EdgeAwayNo = edgeFor(100-pinnAway, noAsk(tickers, s.AwayTicker))
+}
+
+func edgeFor(model, ask float64) float64 {
+	if ask <= 0 {
+		return 0
+	}
+	return model - ask
+}
+
+func yesAsk(tickers map[string]*game.TickerData, ticker string) float64 {
+	if td, ok := tickers[ticker]; ok {
+		return td.YesAsk
+	}
+	return -1
+}
+
+func noAsk(tickers map[string]*game.TickerData, ticker string) float64 {
+	if td, ok := tickers[ticker]; ok {
+		return td.NoAsk
+	}
+	return -1
 }

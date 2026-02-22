@@ -113,7 +113,21 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	hs.ModelAwayPct = ProjectedOdds(hs.AwayWinPct, hs.TimeLeft, -lead) * 100
 }
 
-func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool { return false }
+func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
+	if !ok {
+		return false
+	}
+	for _, e := range []float64{
+		hs.EdgeHomeYes, hs.EdgeAwayYes,
+		hs.EdgeHomeNo, hs.EdgeAwayNo,
+	} {
+		if e >= discrepancyPct {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
@@ -123,37 +137,28 @@ func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return s.checkEdges(gc, hs)
 }
 
-// checkEdges compares model probabilities against Kalshi market prices
-// and returns OrderIntents for any edges above the discrepancy threshold.
+// checkEdges reads stored edge values from HockeyState and returns
+// OrderIntents for any edges above the discrepancy threshold.
 func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState) []events.OrderIntent {
 	var intents []events.OrderIntent
 
 	for _, edge := range []struct {
 		ticker   string
 		outcome  string
+		edgeVal  float64
 		modelPct float64
 	}{
-		{hs.HomeTicker, "home", hs.ModelHomePct},
-		{hs.AwayTicker, "away", hs.ModelAwayPct},
+		{hs.HomeTicker, "home", hs.EdgeHomeYes, hs.ModelHomePct},
+		{hs.AwayTicker, "away", hs.EdgeAwayYes, hs.ModelAwayPct},
 	} {
-		if edge.ticker == "" {
+		if edge.ticker == "" || edge.edgeVal < discrepancyPct {
 			continue
 		}
-		td, ok := gc.Tickers[edge.ticker]
-		if !ok || td.YesAsk <= 0 {
-			continue
-		}
-
-		kalshiPct := td.YesAsk
-		diff := edge.modelPct - kalshiPct
-		if diff < discrepancyPct {
-			continue
-		}
-
 		if hs.HasOrdered(edge.outcome) {
 			continue
 		}
 
+		td := gc.Tickers[edge.ticker]
 		hs.MarkOrdered(edge.outcome)
 		intents = append(intents, events.OrderIntent{
 			Sport:     gc.Sport,
@@ -164,7 +169,7 @@ func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState)
 			Side:      "yes",
 			Outcome:   edge.outcome,
 			LimitPct:  edge.modelPct,
-			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", edge.modelPct, kalshiPct, diff),
+			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", edge.modelPct, td.YesAsk, edge.edgeVal),
 			HomeScore: hs.HomeScore,
 			AwayScore: hs.AwayScore,
 		})

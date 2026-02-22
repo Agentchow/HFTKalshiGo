@@ -105,3 +105,7 @@ func (f *FootballState) SetTickers(home, away, _ string) {
 	f.HomeTicker = home
 	f.AwayTicker = away
 }
+
+func (f *FootballState) RecalcEdge(_ map[string]*game.TickerData) {
+	// TODO: implement football edge calculation
+}

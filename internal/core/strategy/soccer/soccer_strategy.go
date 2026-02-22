@@ -55,15 +55,17 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	return nil
 }
 
+func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
+	return nil
+}
+
 func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
 	ss, ok := gc.Game.(*soccerState.SoccerState)
 	if !ok {
 		return nil
 	}
 
-	telemetry.Infof("soccer: match finished %s vs %s -> %d-%d (%s)",
-		ss.GetAwayTeam(), ss.GetHomeTeam(), gf.AwayScore, gf.HomeScore, gf.FinalState)
-
+	_ = ss
 	// TODO: emit slam orders for settled 1X2 markets
 	return nil
 }

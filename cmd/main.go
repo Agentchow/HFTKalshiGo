@@ -38,7 +38,7 @@ func main() {
 		telemetry.Errorf("Kalshi credentials missing — set %s_KEYID and %s_KEYFILE in .env", cfg.KalshiMode, cfg.KalshiMode)
 		os.Exit(1)
 	}
-	telemetry.Infof("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
+	telemetry.Plainf("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
 
 	// ── Balance fetch ──────────────────────────────────────────
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner, cfg.RateDivisor)
@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		telemetry.Warnf("Balance fetch failed: %v", err)
 	} else {
-		telemetry.Infof("Kalshi balance: $%.2f", float64(balance)/100.0)
+		telemetry.Plainf("Kalshi balance: $%.2f", float64(balance)/100.0)
 	}
 
 	// ── Fanout server ──────────────────────────────────────────
@@ -84,7 +84,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	telemetry.Infof("Webhook listening on %q", addr)
+	telemetry.Plainf("Webhook listening on %q", addr)
 
 	// ── ngrok ──────────────────────────────────────────────────
 	var ngrokProc *os.Process
@@ -94,7 +94,7 @@ func main() {
 			telemetry.Warnf("Ngrok failed: %v (falling back to local)", err)
 		} else {
 			ngrokProc = proc
-			telemetry.Infof("Ngrok tunnel on %q", publicURL)
+			telemetry.Plainf("Ngrok tunnel on %q", publicURL)
 		}
 	}
 

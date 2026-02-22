@@ -65,7 +65,7 @@ func OpenStore(path string) (*Store, error) {
 		return nil, fmt.Errorf("read current size: %w", err)
 	}
 
-	telemetry.Infof("webhook store: opened %s  rows_bytes=%d", path, size)
+	telemetry.Plainf("webhook store: opened %s  rows_bytes=%d", path, size)
 
 	return &Store{db: db, cachedSize: size}, nil
 }

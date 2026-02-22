@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
@@ -62,19 +63,30 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 			return
 		}
 
+		prevHome := gc.Game.GetHomeScore()
+		prevAway := gc.Game.GetAwayScore()
+		prevHasLive := gc.Game.HasLiveData()
+
 		intents := strat.Evaluate(gc, &sc)
-		for _, intent := range intents {
-			telemetry.Metrics.OrderIntents.Inc()
-			e.bus.Publish(events.Event{
-				ID:        intent.Ticker,
-				Type:      events.EventOrderIntent,
-				Sport:     sc.Sport,
-				League:    sc.League,
-				GameID:    sc.EID,
-				Timestamp: evt.Timestamp,
-				Payload:   intent,
-			})
+		e.publishIntents(intents, sc.Sport, sc.League, sc.EID, evt.Timestamp)
+
+		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
+		firstLive := !prevHasLive && gc.Game.HasLiveData()
+
+		if !firstLive && !scoreChanged {
+			return
 		}
+
+		if !gc.DisplayedLive {
+			if !gc.HasTickerPrices() {
+				return
+			}
+			gc.DisplayedLive = true
+			printGame(gc, "LIVE")
+			return
+		}
+
+		printGame(gc, "GOAL")
 	})
 
 	return nil
@@ -98,18 +110,8 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 		}
 
 		intents := strat.OnFinish(gc, &gf)
-		for _, intent := range intents {
-			telemetry.Metrics.OrderIntents.Inc()
-			e.bus.Publish(events.Event{
-				ID:        intent.Ticker,
-				Type:      events.EventOrderIntent,
-				Sport:     gf.Sport,
-				League:    gf.League,
-				GameID:    gf.EID,
-				Timestamp: evt.Timestamp,
-				Payload:   intent,
-			})
-		}
+		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
+		printGame(gc, "FINAL")
 
 		telemetry.Metrics.ActiveGames.Dec()
 	})
@@ -136,12 +138,30 @@ func (e *Engine) onMarketData(evt events.Event) error {
 	}
 
 	for _, gc := range e.store.All() {
-		// Tickers are seeded asynchronously by the resolver, so
-		// we forward every update to the game goroutine and let it
-		// check ownership there (race-free).
 		gc.Send(func() {
-			if _, exists := gc.Tickers[me.Ticker]; exists {
-				gc.UpdateTicker(td)
+			if _, exists := gc.Tickers[me.Ticker]; !exists {
+				return
+			}
+			gc.UpdateTicker(td)
+
+			if !gc.Game.HasLiveData() {
+				return
+			}
+
+			if !gc.DisplayedLive {
+				gc.DisplayedLive = true
+				printGame(gc, "LIVE")
+				return
+			}
+
+			strat, ok := e.registry.Get(gc.Sport)
+			if !ok {
+				return
+			}
+			intents := strat.OnPriceUpdate(gc)
+			if len(intents) > 0 {
+				e.publishIntents(intents, gc.Sport, gc.League, gc.EID, evt.Timestamp)
+				printGame(gc, "TICKER UPDATE")
 			}
 		})
 	}
@@ -159,6 +179,32 @@ func (e *Engine) createGameContext(sc events.ScoreChangeEvent, gameStartedAt tim
 	return gc
 }
 
+func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport, league, gameID string, ts time.Time) {
+	for _, intent := range intents {
+		telemetry.Metrics.OrderIntents.Inc()
+		e.bus.Publish(events.Event{
+			ID:        intent.Ticker,
+			Type:      events.EventOrderIntent,
+			Sport:     sport,
+			League:    league,
+			GameID:    gameID,
+			Timestamp: ts,
+			Payload:   intent,
+		})
+	}
+}
+
+func printGame(gc *game.GameContext, eventType string) {
+	switch gc.Sport {
+	case events.SportHockey:
+		display.PrintHockey(gc, eventType)
+	case events.SportSoccer:
+		display.PrintSoccer(gc, eventType)
+	case events.SportFootball:
+		display.PrintFootball(gc, eventType)
+	}
+}
+
 // resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
 func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent, gameStartedAt time.Time) {
 	resolved := e.resolver.Resolve(context.Background(), sc.Sport, sc.HomeTeam, sc.AwayTeam, gameStartedAt)
@@ -173,9 +219,5 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 		for _, t := range resolved.AllTickers() {
 			gc.Tickers[t] = &game.TickerData{Ticker: t}
 		}
-
-		telemetry.Infof("ticker: resolved %s %s vs %s -> home=%s away=%s draw=%s",
-			sc.Sport, sc.HomeTeam, sc.AwayTeam,
-			resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
 	})
 }

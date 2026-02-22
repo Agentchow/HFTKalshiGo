@@ -167,6 +167,6 @@ func (s *Server) ListenAndServe(port int) error {
 	mux.HandleFunc("/ws", s.HandleWS)
 
 	addr := fmt.Sprintf(":%d", port)
-	telemetry.Infof("fanout: server listening on %s", addr)
+	telemetry.Plainf("fanout: server listening on %s", addr)
 	return http.ListenAndServe(addr, mux)
 }

@@ -98,7 +98,7 @@ func Load() *Config {
 		FanoutAddr:  envStr("FANOUT_ADDR", "localhost:9100"),
 		RateDivisor: envInt("RATE_DIVISOR", 1),
 
-		TickersConfigDir: envStr("TICKERS_CONFIG_DIR", ""),
+		TickersConfigDir: envStr("TICKERS_CONFIG_DIR", "configs"),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

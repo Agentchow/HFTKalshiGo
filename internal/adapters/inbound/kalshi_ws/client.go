@@ -39,6 +39,14 @@ func (c *Client) SetTickers(tickers []string) {
 }
 
 func (c *Client) Connect(ctx context.Context) error {
+	if err := c.dial(ctx); err != nil {
+		return err
+	}
+	go c.runLoop(ctx)
+	return nil
+}
+
+func (c *Client) dial(ctx context.Context) error {
 	parsed, _ := url.Parse(c.url)
 	wsPath := parsed.Path
 	if wsPath == "" {
@@ -51,18 +59,54 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 	c.conn = conn
-
-	telemetry.Infof("Kalshi WS connected to %s", c.url)
-
-	go c.readLoop(ctx)
 	return nil
 }
 
+// runLoop reads messages and reconnects on failure with exponential backoff.
+func (c *Client) runLoop(ctx context.Context) {
+	defer close(c.done)
+
+	first := true
+	for {
+		if first {
+			telemetry.Plainf("Kalshi WS connected to %s", c.url)
+			first = false
+		} else {
+			telemetry.Infof("Kalshi WS reconnected")
+		}
+
+		c.readLoop(ctx)
+
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		backoff := 1 * time.Second
+		const maxBackoff = 30 * time.Second
+		for attempt := 1; ; attempt++ {
+			telemetry.Warnf("Kalshi WS reconnecting (attempt %d) in %s", attempt, backoff)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if err := c.dial(ctx); err != nil {
+				telemetry.Warnf("Kalshi WS dial failed: %v", err)
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+			break
+		}
+	}
+}
+
 func (c *Client) readLoop(ctx context.Context) {
-	defer func() {
-		c.conn.Close()
-		close(c.done)
-	}()
+	defer c.conn.Close()
 
 	for {
 		select {

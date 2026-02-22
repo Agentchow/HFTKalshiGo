@@ -43,7 +43,7 @@ func main() {
 	}
 
 	// ── Ticker resolver ────────────────────────────────────────
-	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir)
+	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir, events.SportFootball)
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()

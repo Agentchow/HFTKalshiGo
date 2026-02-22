@@ -82,7 +82,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 		return nil, resp.StatusCode, fmt.Errorf("read response: %w", err)
 	}
 
-	telemetry.Infof("kalshi_http: %s %s -> %d (%s)", method, path, resp.StatusCode, time.Since(start))
+	telemetry.Debugf("kalshi_http: %s %s -> %d (%s)", method, path, resp.StatusCode, time.Since(start))
 
 	return respBody, resp.StatusCode, nil
 }

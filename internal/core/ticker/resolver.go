@@ -78,7 +78,7 @@ func loadSeriesTickers(dir string, sport events.Sport) []string {
 	for i, t := range cfg.SeriesTickers {
 		upper[i] = strings.ToUpper(t)
 	}
-	telemetry.Infof("ticker: loaded %d series for %s from %s", len(upper), sport, path)
+	telemetry.Infof("ticker: loaded %d series for %s", len(upper), sport)
 	return upper
 }
 
@@ -100,10 +100,23 @@ type Resolver struct {
 	sfGroup       singleflight.Group
 }
 
-func NewResolver(client *kalshi_http.Client, tickersConfigDir string) *Resolver {
-	series := make(map[events.Sport][]string)
-	for _, sport := range []events.Sport{events.SportHockey, events.SportSoccer, events.SportFootball} {
+func NewResolver(client *kalshi_http.Client, tickersConfigDir string, sports ...events.Sport) *Resolver {
+	if len(sports) == 0 {
+		sports = []events.Sport{events.SportHockey, events.SportSoccer, events.SportFootball}
+	}
+
+	series := make(map[events.Sport][]string, len(sports))
+	aliases := make(map[events.Sport]map[string]string, len(sports))
+	for _, sport := range sports {
 		series[sport] = loadSeriesTickers(tickersConfigDir, sport)
+		switch sport {
+		case events.SportHockey:
+			aliases[sport] = HockeyAliases
+		case events.SportSoccer:
+			aliases[sport] = SoccerAliases
+		default:
+			aliases[sport] = map[string]string{}
+		}
 	}
 
 	return &Resolver{
@@ -111,11 +124,7 @@ func NewResolver(client *kalshi_http.Client, tickersConfigDir string) *Resolver 
 		markets:       make(map[events.Sport][]kalshi_http.Market),
 		lastFetch:     make(map[events.Sport]time.Time),
 		seriesTickers: series,
-		aliases: map[events.Sport]map[string]string{
-			events.SportHockey:   HockeyAliases,
-			events.SportSoccer:   SoccerAliases,
-			events.SportFootball: {},
-		},
+		aliases:       aliases,
 	}
 }
 
@@ -159,7 +168,9 @@ func (r *Resolver) ensureFresh(ctx context.Context, sport events.Sport) {
 	r.mu.RUnlock()
 
 	if time.Since(last) > marketCacheTTL {
-		r.RefreshMarkets(ctx, sport)
+		r.sfGroup.Do(string(sport), func() (any, error) {
+			return nil, r.RefreshMarkets(ctx, sport)
+		})
 	}
 }
 

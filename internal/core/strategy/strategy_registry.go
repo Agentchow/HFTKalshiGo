@@ -13,6 +13,11 @@ type Strategy interface {
 	// Evaluate is called on each score change. Returns zero or more OrderIntents.
 	Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) []events.OrderIntent
 
+	// OnPriceUpdate is called when a Kalshi market price changes.
+	// It re-checks edges against stored model probabilities without
+	// recomputing the model. Returns zero or more OrderIntents.
+	OnPriceUpdate(gc *game.GameContext) []events.OrderIntent
+
 	// OnFinish is called when a game ends. Returns "slam" orders for settled markets.
 	OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent
 }

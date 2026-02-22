@@ -43,6 +43,9 @@ type GameContext struct {
 	// Fills recorded against this game.
 	Fills []Fill
 
+	// DisplayedLive tracks whether the [LIVE] block has been printed.
+	DisplayedLive bool
+
 	inbox chan func()
 	stop  chan struct{}
 }
@@ -100,6 +103,17 @@ func (gc *GameContext) Send(fn func()) {
 func (gc *GameContext) Close() {
 	close(gc.inbox)
 	<-gc.stop
+}
+
+// HasTickerPrices returns true if at least one ticker has a non-zero price.
+// Must be called from the game's goroutine (inside a Send closure).
+func (gc *GameContext) HasTickerPrices() bool {
+	for _, td := range gc.Tickers {
+		if td.YesAsk > 0 || td.NoAsk > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdateTicker sets or replaces the live market snapshot for a ticker.

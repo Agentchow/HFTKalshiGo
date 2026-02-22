@@ -64,15 +64,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	// Compute model: Pinnacle first, math model fallback
 	s.computeModel(hs)
 
-	telemetry.Debugf("hockey: model %s  %s %.1f%% vs %s %.1f%%  score=%d-%d  period=%s  time=%.0fm  source=%s",
-		sc.EID,
-		hs.GetHomeTeam(), hs.ModelHomePct,
-		hs.GetAwayTeam(), hs.ModelAwayPct,
-		hs.GetHomeScore(), hs.GetAwayScore(),
-		hs.GetPeriod(), hs.GetTimeRemaining(),
-		s.modelSource(hs))
-
-	return s.checkEdges(gc, hs, sc)
+	return s.checkEdges(gc, hs)
 }
 
 func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
@@ -80,9 +72,6 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []
 	if !ok {
 		return nil
 	}
-
-	telemetry.Infof("hockey: game finished %s vs %s -> %d-%d (%s)",
-		hs.GetAwayTeam(), hs.GetHomeTeam(), gf.AwayScore, gf.HomeScore, gf.FinalState)
 
 	return s.slamOrders(gc, hs, gf)
 }
@@ -113,16 +102,17 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	hs.ModelAwayPct = ProjectedOdds(hs.AwayWinPct, hs.TimeLeft, -lead) * 100
 }
 
-func (s *Strategy) modelSource(hs *hockeyState.HockeyState) string {
-	if hs.PinnacleHomePct != nil && hs.PinnacleAwayPct != nil {
-		return "pinnacle"
+func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
+	if !ok || !hs.HasLiveData() || hs.ModelHomePct == 0 {
+		return nil
 	}
-	return "math"
+	return s.checkEdges(gc, hs)
 }
 
 // checkEdges compares model probabilities against Kalshi market prices
 // and returns OrderIntents for any edges above the discrepancy threshold.
-func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState, sc *events.ScoreChangeEvent) []events.OrderIntent {
+func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState) []events.OrderIntent {
 	var intents []events.OrderIntent
 
 	for _, edge := range []struct {
@@ -141,7 +131,7 @@ func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState,
 			continue
 		}
 
-		kalshiPct := td.YesAsk // yes_ask is already in cents (0-100)
+		kalshiPct := td.YesAsk
 		diff := edge.modelPct - kalshiPct
 		if diff < discrepancyPct {
 			continue
@@ -151,22 +141,19 @@ func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState,
 			continue
 		}
 
-		telemetry.Infof("hockey: edge %s %s  model=%.1f%%  kalshi=%.0f¢  diff=+%.1f%%",
-			sc.EID, edge.outcome, edge.modelPct, kalshiPct, diff)
-
 		hs.MarkOrdered(edge.outcome)
 		intents = append(intents, events.OrderIntent{
-			Sport:     sc.Sport,
-			League:    sc.League,
-			GameID:    sc.EID,
-			EID:       sc.EID,
+			Sport:     gc.Sport,
+			League:    gc.League,
+			GameID:    gc.EID,
+			EID:       gc.EID,
 			Ticker:    edge.ticker,
 			Side:      "yes",
 			Outcome:   edge.outcome,
 			LimitPct:  edge.modelPct,
 			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", edge.modelPct, kalshiPct, diff),
-			HomeScore: sc.HomeScore,
-			AwayScore: sc.AwayScore,
+			HomeScore: hs.HomeScore,
+			AwayScore: hs.AwayScore,
 		})
 	}
 
@@ -191,9 +178,6 @@ func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState,
 	if winTicker == "" {
 		return nil
 	}
-
-	telemetry.Infof("hockey: slam %s  winner=%s  %d-%d",
-		gf.EID, outcome, gf.HomeScore, gf.AwayScore)
 
 	return []events.OrderIntent{{
 		Sport:     gf.Sport,

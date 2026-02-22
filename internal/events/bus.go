@@ -1,6 +1,8 @@
 package events
 
 import (
+	"fmt"
+	"log/slog"
 	"sync"
 )
 

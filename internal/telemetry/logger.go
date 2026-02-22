@@ -27,6 +27,7 @@ func Infof(format string, args ...any)  { L().Info(fmt.Sprintf(format, args...))
 func Warnf(format string, args ...any)  { L().Warn(fmt.Sprintf(format, args...)) }
 func Errorf(format string, args ...any) { L().Error(fmt.Sprintf(format, args...)) }
 func Debugf(format string, args ...any) { L().Debug(fmt.Sprintf(format, args...)) }
+func Plainf(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) }
 
 // ParseLogLevel converts a string level name to slog.Level.
 func ParseLogLevel(level string) slog.Level {

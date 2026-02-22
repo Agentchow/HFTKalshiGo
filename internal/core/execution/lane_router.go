@@ -9,7 +9,7 @@ import (
 )
 
 // LaneRouter maps (sport, league) to a dedicated execution lane.
-// Each lane has its own risk limits, throttle, and idempotency state.
+// Each lane has its own risk limits and idempotency state.
 type LaneRouter struct {
 	mu    sync.RWMutex
 	lanes map[string]*lanes.Lane // "hockey:ahl" -> Lane

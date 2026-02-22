@@ -213,25 +213,21 @@ func queryNgrokAPI() (string, error) {
 func registerSportLanes(router *execution.LaneRouter, rl config.RiskLimits, sport events.Sport, sportKey string) {
 	sl, ok := rl.SportLimit(sportKey)
 	if !ok {
-		router.Register(sport, "*", lanes.NewLane(5000, 50000, 500))
+		router.Register(sport, "*", lanes.NewLane(5000, 50000))
 		return
 	}
 
 	sportSpend := lanes.NewSpendGuard(sl.MaxSportCents)
 
 	if len(sl.Leagues) == 0 {
-		router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend, 500))
+		router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
 		return
 	}
 
 	for league, ll := range sl.Leagues {
-		throttle := ll.ThrottleMs
-		if throttle == 0 {
-			throttle = 500
-		}
-		router.Register(sport, league, lanes.NewLaneWithSpend(ll.MaxGameCents, sportSpend, throttle))
+		router.Register(sport, league, lanes.NewLaneWithSpend(ll.MaxGameCents, sportSpend))
 	}
-	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend, 500))
+	router.Register(sport, "*", lanes.NewLaneWithSpend(5000, sportSpend))
 }
 
 func parseLogLevel(level string) slog.Level {

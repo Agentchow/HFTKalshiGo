@@ -8,8 +8,7 @@ import (
 )
 
 type LeagueLimits struct {
-	MaxGameCents int   `yaml:"max_game_cents"`
-	ThrottleMs   int64 `yaml:"throttle_ms"`
+	MaxGameCents int `yaml:"max_game_cents"`
 }
 
 type SportLimits struct {

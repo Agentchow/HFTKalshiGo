@@ -37,7 +37,7 @@ func NewService(bus *events.Bus, router *LaneRouter, client *kalshi_http.Client,
 }
 
 // onOrderIntent is called on the game's goroutine (via the synchronous bus).
-// It checks per-game and per-sport spending caps, throttle, and dedup,
+// It checks per-game and per-sport spending caps and dedup,
 // then spawns a goroutine for the HTTP call.
 func (s *Service) onOrderIntent(evt events.Event) error {
 	intent, ok := evt.Payload.(events.OrderIntent)
@@ -63,7 +63,7 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		}
 	}
 
-	// Per-sport spending cap + throttle + idempotency.
+	// Per-sport spending cap + idempotency.
 	if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents) {
 		telemetry.Infof("execution: blocked by lane checks ticker=%s", intent.Ticker)
 		return nil

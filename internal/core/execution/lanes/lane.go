@@ -1,30 +1,27 @@
 package lanes
 
-// Lane encapsulates spending limits, throttle, and idempotency for a
+// Lane encapsulates spending limits and idempotency for a
 // single (sport, league) execution path.
 type Lane struct {
 	maxGameCents int
 	spend        *SpendGuard
-	throttle     *Throttle
 	idempotent   *IdempotencyGuard
 }
 
-func NewLane(maxGameCents int, maxSportCents int, throttleMs int64) *Lane {
+func NewLane(maxGameCents int, maxSportCents int) *Lane {
 	return &Lane{
 		maxGameCents: maxGameCents,
 		spend:        NewSpendGuard(maxSportCents),
-		throttle:     NewThrottle(throttleMs),
 		idempotent:   NewIdempotencyGuard(),
 	}
 }
 
 // NewLaneWithSpend creates a lane that shares an existing SpendGuard
 // (so multiple leagues under the same sport share one sport-level cap).
-func NewLaneWithSpend(maxGameCents int, spend *SpendGuard, throttleMs int64) *Lane {
+func NewLaneWithSpend(maxGameCents int, spend *SpendGuard) *Lane {
 	return &Lane{
 		maxGameCents: maxGameCents,
 		spend:        spend,
-		throttle:     NewThrottle(throttleMs),
 		idempotent:   NewIdempotencyGuard(),
 	}
 }
@@ -46,10 +43,6 @@ func (l *Lane) Allow(ticker string, homeScore, awayScore int, orderCents int) bo
 		return false
 	}
 
-	if !l.throttle.Allow() {
-		return false
-	}
-
 	return true
 }
 
@@ -59,7 +52,6 @@ func (l *Lane) RecordOrder(ticker string, homeScore, awayScore int, orderCents i
 	key := l.idempotent.Key(ticker, homeScore, awayScore)
 	l.idempotent.Record(key)
 	l.spend.Record(orderCents)
-	l.throttle.Touch()
 }
 
 // IdempotencyKey returns the dedup key for external use.

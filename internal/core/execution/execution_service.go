@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
@@ -73,12 +74,12 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 	lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
 
 	// Fire the HTTP call on its own goroutine — don't block the game's event loop.
-	go s.placeOrder(intent)
+	go s.placeOrder(intent, evt.Timestamp)
 
 	return nil
 }
 
-func (s *Service) placeOrder(intent events.OrderIntent) {
+func (s *Service) placeOrder(intent events.OrderIntent, webhookReceivedAt time.Time) {
 	req := kalshi_http.CreateOrderRequest{
 		Ticker:   intent.Ticker,
 		Action:   "buy",
@@ -94,14 +95,25 @@ func (s *Service) placeOrder(intent events.OrderIntent) {
 		req.NoPrice = int(intent.LimitPct)
 	}
 
+	if !webhookReceivedAt.IsZero() {
+		e2e := time.Since(webhookReceivedAt)
+		telemetry.Metrics.OrderE2ELatency.Record(e2e)
+		telemetry.Infof("execution: e2e_latency=%s ticker=%s", e2e, intent.Ticker)
+	}
+
 	resp, err := s.client.PlaceOrder(context.Background(), req)
 	if err != nil {
 		telemetry.Errorf("execution: order failed ticker=%s: %v", intent.Ticker, err)
 		return
 	}
 
-	telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q",
-		intent.Ticker, resp.Order.OrderID, intent.Reason)
+	if !webhookReceivedAt.IsZero() {
+		telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q e2e=%s",
+			intent.Ticker, resp.Order.OrderID, intent.Reason, time.Since(webhookReceivedAt))
+	} else {
+		telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q",
+			intent.Ticker, resp.Order.OrderID, intent.Reason)
+	}
 
 	gc, ok := s.gameStore.Get(intent.Sport, intent.GameID)
 	if !ok {

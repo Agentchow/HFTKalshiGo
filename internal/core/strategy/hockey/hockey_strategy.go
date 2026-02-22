@@ -6,6 +6,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
+	"github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -27,10 +28,10 @@ func NewStrategy(scoreDropConfirmSec int) *Strategy {
 	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) []events.OrderIntent {
+func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
-		return nil
+		return strategy.EvalResult{}
 	}
 
 	// Score-drop guard
@@ -41,14 +42,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 			telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
 				result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 			s.lastPendingLog = time.Now()
-			return nil
+			return strategy.EvalResult{}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
 					result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return nil
+			return strategy.EvalResult{}
 		case "confirmed":
 			hs.ClearOrdered()
 			telemetry.Infof("hockey: overturn confirmed for %s -> %d-%d",
@@ -58,7 +59,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 
 	changed := hs.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
 	if !changed {
-		return nil
+		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
@@ -74,7 +75,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	// Compute model: Pinnacle first, math model fallback
 	s.computeModel(hs)
 
-	return s.checkEdges(gc, hs)
+	return strategy.EvalResult{Intents: s.checkEdges(gc, hs)}
 }
 
 func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
@@ -111,6 +112,8 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	hs.ModelHomePct = ProjectedOdds(hs.HomeWinPct, hs.TimeLeft, lead) * 100
 	hs.ModelAwayPct = ProjectedOdds(hs.AwayWinPct, hs.TimeLeft, -lead) * 100
 }
+
+func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool { return false }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)

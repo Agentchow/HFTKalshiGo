@@ -78,6 +78,11 @@ var Metrics = struct {
 	OrderErrors        Counter
 	ActiveGames        Gauge
 	WebhookLatency     *LatencyTracker
+	OrderE2ELatency    *LatencyTracker
+	RateLimiterWait    *LatencyTracker
+	InboxOverflows     Counter
 }{
-	WebhookLatency: NewLatencyTracker(1000),
+	WebhookLatency:  NewLatencyTracker(1000),
+	OrderE2ELatency: NewLatencyTracker(1000),
+	RateLimiterWait: NewLatencyTracker(1000),
 }

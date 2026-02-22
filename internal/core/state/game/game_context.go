@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/events"
+	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
 // TickerData holds the latest bid/ask snapshot for a single Kalshi ticker.
@@ -57,9 +58,6 @@ type GameContext struct {
 	// KalshiEventURL is the link to the Kalshi event page for this game.
 	KalshiEventURL string
 
-	// PregameApplied tracks whether real pregame odds have been set (vs defaults).
-	PregameApplied bool
-
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time
 
@@ -111,9 +109,15 @@ func (gc *GameContext) run() {
 }
 
 // Send enqueues a closure to run on the game's goroutine.
-// Non-blocking as long as the inbox buffer isn't full.
+// Non-blocking: drops the closure and logs a warning if the inbox is full,
+// preventing a stuck game from blocking upstream event processing.
 func (gc *GameContext) Send(fn func()) {
-	gc.inbox <- fn
+	select {
+	case gc.inbox <- fn:
+	default:
+		telemetry.Metrics.InboxOverflows.Inc()
+		telemetry.Warnf("game %s: inbox full (cap=%d), dropping event", gc.EID, cap(gc.inbox))
+	}
 }
 
 // Close shuts down the game's goroutine and waits for it to drain.

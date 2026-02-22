@@ -56,13 +56,13 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	awayShort := shortName(ss.AwayTeam)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)
-	fmt.Fprintf(&b, "%s\n", divider)
 	if gc.KalshiEventURL != "" {
-		fmt.Fprintf(&b, "  %s vs %s  |  %s\n", ss.HomeTeam, ss.AwayTeam, gc.KalshiEventURL)
+		fmt.Fprintf(&b, "\n[%s %s]  %s\n", eventType, ts, gc.KalshiEventURL)
 	} else {
-		fmt.Fprintf(&b, "  %s vs %s\n", ss.HomeTeam, ss.AwayTeam)
+		fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)
 	}
+	fmt.Fprintf(&b, "%s\n", divider)
+	fmt.Fprintf(&b, "  %s vs %s\n", ss.HomeTeam, ss.AwayTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.0f%%  |  Draw %.0f%%  |  %s %.0f%%  |  G0=%.2f\n",
 		"Pregame:", homeShort, ss.HomeWinPct*100, ss.DrawPct*100, awayShort, ss.AwayWinPct*100, ss.G0)
 	scoreLine := fmt.Sprintf("Score %d-%d  |  %s (~%.0f min left)", ss.HomeScore, ss.AwayScore, ss.Half, ss.TimeLeft)

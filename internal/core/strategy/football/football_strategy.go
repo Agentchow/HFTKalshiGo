@@ -5,6 +5,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	fbState "github.com/charleschow/hft-trading/internal/core/state/game/football"
+	"github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -19,10 +20,10 @@ func NewStrategy(scoreDropConfirmSec int) *Strategy {
 	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) []events.OrderIntent {
+func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
 	fs, ok := gc.Game.(*fbState.FootballState)
 	if !ok {
-		return nil
+		return strategy.EvalResult{}
 	}
 
 	if fs.HasLiveData() {
@@ -32,14 +33,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 			telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
 				result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 			s.lastPendingLog = time.Now()
-			return nil
+			return strategy.EvalResult{}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
 					result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return nil
+			return strategy.EvalResult{}
 		case "confirmed":
 			telemetry.Infof("football: overturn confirmed for %s -> %d-%d",
 				sc.EID, sc.HomeScore, sc.AwayScore)
@@ -48,7 +49,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 
 	changed := fs.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
 	if !changed {
-		return nil
+		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
@@ -61,8 +62,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	}
 
 	// TODO: plug in football model and edge detection
-	return nil
+	return strategy.EvalResult{}
 }
+
+func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool { return false }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return nil

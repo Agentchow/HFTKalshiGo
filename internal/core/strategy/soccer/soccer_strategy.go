@@ -1,29 +1,69 @@
 package soccer
 
 import (
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
+	"github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
+)
+
+const (
+	pregameCacheTTL  = 30 * time.Minute
+	pregameRetryCool = 30 * time.Second
+	edgeThreshold    = 3.0 // percentage points
 )
 
 // Strategy implements soccer-specific 3-way (1X2) trading logic.
 type Strategy struct {
 	scoreDropConfirmSec int
 	lastPendingLog      time.Time
+
+	pregame        *goalserve_http.PregameClient
+	pregameMu      sync.RWMutex
+	pregameCache   []goalserve_http.PregameOdds
+	pregameFetch   time.Time
+	pregameLastTry time.Time
+	pregameApplied map[string]bool
 }
 
-func NewStrategy(scoreDropConfirmSec int) *Strategy {
-	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
+func NewStrategy(scoreDropConfirmSec int, pregame *goalserve_http.PregameClient) *Strategy {
+	s := &Strategy{
+		scoreDropConfirmSec: scoreDropConfirmSec,
+		pregame:             pregame,
+		pregameApplied:      make(map[string]bool),
+	}
+	if pregame != nil {
+		s.refreshPregameCache()
+	}
+	return s
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) []events.OrderIntent {
+func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
 	ss, ok := gc.Game.(*soccerState.SoccerState)
 	if !ok {
-		return nil
+		return strategy.EvalResult{}
 	}
+
+	var displayEvents []string
+
+	// Apply pregame odds on first encounter.
+	if s.pregame != nil && !s.pregameApplied[gc.EID] {
+		if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
+			s.pregameApplied[gc.EID] = true
+			if gc.DisplayedLive {
+				displayEvents = append(displayEvents, "LIVE")
+			}
+		}
+	}
+
+	// Snapshot red cards before state update.
+	prevHomeRC, prevAwayRC := ss.HomeRedCards, ss.AwayRedCards
 
 	tracked := len(gc.Tickers) > 0
 
@@ -37,7 +77,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 			}
 			s.lastPendingLog = time.Now()
-			return nil
+			return strategy.EvalResult{DisplayEvents: displayEvents}
 		case "pending":
 			if tracked && time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
@@ -45,7 +85,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return nil
+			return strategy.EvalResult{DisplayEvents: displayEvents}
 		case "confirmed":
 			if tracked {
 				telemetry.Infof("soccer: overturn confirmed for %s @ %s [%s] -> %d-%d",
@@ -56,7 +96,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 
 	changed := ss.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
 	if !changed {
-		return nil
+		return strategy.EvalResult{DisplayEvents: displayEvents}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
@@ -74,8 +114,12 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 		ss.UpdateRedCards(sc.HomeRedCards, sc.AwayRedCards)
 	}
 
+	if (ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC) && gc.DisplayedLive {
+		displayEvents = append(displayEvents, "RED-CARD")
+	}
+
 	// TODO: plug in Poisson model and 6-way edge evaluation
-	return nil
+	return strategy.EvalResult{DisplayEvents: displayEvents}
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
@@ -91,4 +135,104 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []
 	_ = ss
 	// TODO: emit slam orders for settled 1X2 markets
 	return nil
+}
+
+func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
+	ss, ok := gc.Game.(*soccerState.SoccerState)
+	if !ok {
+		return false
+	}
+	if ss.PinnacleHomePct == nil || ss.PinnacleDrawPct == nil || ss.PinnacleAwayPct == nil {
+		return false
+	}
+	pairs := []struct {
+		pinn float64
+		ask  float64
+	}{
+		{*ss.PinnacleHomePct, gc.YesAsk(ss.HomeTicker)},
+		{*ss.PinnacleDrawPct, gc.YesAsk(ss.DrawTicker)},
+		{*ss.PinnacleAwayPct, gc.YesAsk(ss.AwayTicker)},
+		{100 - *ss.PinnacleHomePct, gc.NoAsk(ss.HomeTicker)},
+		{100 - *ss.PinnacleDrawPct, gc.NoAsk(ss.DrawTicker)},
+		{100 - *ss.PinnacleAwayPct, gc.NoAsk(ss.AwayTicker)},
+	}
+	for _, p := range pairs {
+		if p.ask > 0 && p.pinn-p.ask >= edgeThreshold {
+			return true
+		}
+	}
+	return false
+}
+
+// ── Pregame odds infrastructure ──────────────────────────────────────
+
+func (s *Strategy) applyPregame(ss *soccerState.SoccerState, homeTeam, awayTeam string) bool {
+	if s.pregame == nil {
+		return false
+	}
+
+	s.pregameMu.RLock()
+	stale := time.Since(s.pregameFetch) > pregameCacheTTL
+	cached := s.pregameCache
+	s.pregameMu.RUnlock()
+
+	if stale || cached == nil {
+		go s.refreshPregameCache()
+		if cached == nil {
+			return false
+		}
+	}
+
+	homeNorm := strings.ToLower(strings.TrimSpace(homeTeam))
+	awayNorm := strings.ToLower(strings.TrimSpace(awayTeam))
+
+	for _, p := range cached {
+		pHome := strings.ToLower(strings.TrimSpace(p.HomeTeam))
+		pAway := strings.ToLower(strings.TrimSpace(p.AwayTeam))
+
+		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
+			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
+			ss.HomeWinPct = p.HomeWinPct
+			ss.DrawPct = p.DrawPct
+			ss.AwayWinPct = p.AwayWinPct
+			ss.G0 = p.G0
+			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% D=%.1f%% A=%.1f%% G0=%.2f",
+				homeTeam, awayTeam, p.HomeWinPct*100, p.DrawPct*100, p.AwayWinPct*100, p.G0)
+			return true
+		}
+	}
+	telemetry.Debugf("pregame: no match for %s vs %s", homeTeam, awayTeam)
+	return false
+}
+
+func (s *Strategy) refreshPregameCache() {
+	s.pregameMu.Lock()
+	if s.pregameCache != nil && time.Since(s.pregameFetch) < pregameCacheTTL {
+		s.pregameMu.Unlock()
+		return
+	}
+	if time.Since(s.pregameLastTry) < pregameRetryCool {
+		s.pregameMu.Unlock()
+		return
+	}
+	s.pregameLastTry = time.Now()
+	s.pregameMu.Unlock()
+
+	odds, err := s.pregame.FetchSoccerPregame()
+	if err != nil {
+		telemetry.Warnf("pregame: fetch failed: %v", err)
+		return
+	}
+
+	s.pregameMu.Lock()
+	s.pregameCache = odds
+	s.pregameFetch = time.Now()
+	s.pregameMu.Unlock()
+}
+
+func fuzzyTeamMatch(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return a == b || strings.Contains(a, b) || strings.Contains(b, a)
 }

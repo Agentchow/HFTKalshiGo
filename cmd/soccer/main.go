@@ -54,8 +54,8 @@ func main() {
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, pregameClient)
+	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregameClient))
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)

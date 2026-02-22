@@ -20,13 +20,15 @@ type GameKey struct {
 // It does NOT protect the GameContext contents — each GameContext
 // serializes its own state mutations through its inbox channel.
 type GameStateStore struct {
-	mu    sync.RWMutex
-	games map[GameKey]*game.GameContext
+	mu          sync.RWMutex
+	games       map[GameKey]*game.GameContext
+	tickerIndex map[string][]*game.GameContext
 }
 
 func New() *GameStateStore {
 	return &GameStateStore{
-		games: make(map[GameKey]*game.GameContext),
+		games:       make(map[GameKey]*game.GameContext),
+		tickerIndex: make(map[string][]*game.GameContext),
 	}
 }
 
@@ -49,11 +51,52 @@ func (s *GameStateStore) Delete(sport events.Sport, gameID string) {
 	key := GameKey{Sport: sport, GameID: gameID}
 	gc, ok := s.games[key]
 	delete(s.games, key)
+	if ok {
+		for ticker, gcs := range s.tickerIndex {
+			for i, g := range gcs {
+				if g == gc {
+					s.tickerIndex[ticker] = append(gcs[:i], gcs[i+1:]...)
+					break
+				}
+			}
+			if len(s.tickerIndex[ticker]) == 0 {
+				delete(s.tickerIndex, ticker)
+			}
+		}
+	}
 	s.mu.Unlock()
 
 	if ok {
 		gc.Close()
 	}
+}
+
+// RegisterTicker associates a Kalshi ticker with a game context so
+// market data updates can be routed directly without iterating all games.
+func (s *GameStateStore) RegisterTicker(ticker string, gc *game.GameContext) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.tickerIndex[ticker] {
+		if existing == gc {
+			return
+		}
+	}
+	s.tickerIndex[ticker] = append(s.tickerIndex[ticker], gc)
+}
+
+// ByTicker returns all game contexts that have registered interest in a
+// specific Kalshi ticker. Returns nil if no games match.
+// The returned slice is a snapshot safe to iterate after the lock is released.
+func (s *GameStateStore) ByTicker(ticker string) []*game.GameContext {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src := s.tickerIndex[ticker]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]*game.GameContext, len(src))
+	copy(out, src)
+	return out
 }
 
 // All returns a snapshot of all game contexts. Safe for iteration.

@@ -44,8 +44,13 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 	if method != http.MethodGet {
 		lim = c.writeLimiter
 	}
+	rlStart := time.Now()
 	if err := lim.Wait(ctx); err != nil {
 		return nil, 0, fmt.Errorf("rate limit wait: %w", err)
+	}
+	if rlWait := time.Since(rlStart); rlWait > time.Millisecond {
+		telemetry.Metrics.RateLimiterWait.Record(rlWait)
+		telemetry.Debugf("kalshi_http: rate limiter wait %s for %s %s", rlWait, method, path)
 	}
 
 	var bodyReader io.Reader

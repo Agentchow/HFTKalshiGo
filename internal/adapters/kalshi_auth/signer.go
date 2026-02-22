@@ -40,14 +40,18 @@ func NewSignerFromFile(keyID, keyFilePath string) (*Signer, error) {
 		return nil, fmt.Errorf("no PEM block found in %s", keyFilePath)
 	}
 
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("parse private key: %w", err)
-	}
-
-	rsaKey, ok := parsed.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("key in %s is not RSA (got %T)", keyFilePath, parsed)
+	// Try PKCS#8 first, fall back to PKCS#1.
+	var rsaKey *rsa.PrivateKey
+	if parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		var ok bool
+		rsaKey, ok = parsed.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key in %s is not RSA (got %T)", keyFilePath, parsed)
+		}
+	} else if pk1, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		rsaKey = pk1
+	} else {
+		return nil, fmt.Errorf("parse private key in %s: not PKCS#8 or PKCS#1", keyFilePath)
 	}
 
 	return &Signer{keyID: keyID, privateKey: rsaKey}, nil

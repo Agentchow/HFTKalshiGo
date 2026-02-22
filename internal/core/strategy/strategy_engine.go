@@ -330,12 +330,6 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 				td.YesBid = float64(snap.YesBid)
 				td.NoAsk = float64(snap.NoAsk)
 				td.NoBid = float64(snap.NoBid)
-				// if snap.YesBid > 0 {
-				// 	td.NoAsk = float64(100 - snap.YesBid)
-				// }
-				// if snap.YesAsk > 0 {
-				// 	td.NoBid = float64(100 - snap.YesAsk)
-				// }
 				td.Volume = snap.Volume
 			}
 			gc.Tickers[t] = td

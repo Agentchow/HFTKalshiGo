@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -78,7 +80,67 @@ type Market struct {
 	YesBid                 int    `json:"yes_bid"`
 	NoAsk                  int    `json:"no_ask"`
 	NoBid                  int    `json:"no_bid"`
+	YesAskDollars          string `json:"yes_ask_dollars"`
+	YesBidDollars          string `json:"yes_bid_dollars"`
+	NoAskDollars           string `json:"no_ask_dollars"`
+	NoBidDollars           string `json:"no_bid_dollars"`
 	MutuallyExclusive      bool   `json:"mutually_exclusive"`
+}
+
+// EffectiveYesAsk returns the yes-ask price in cents, preferring the
+// dollar field when the deprecated integer field is zero.
+func (m Market) EffectiveYesAsk() int {
+	if m.YesAsk != 0 {
+		return m.YesAsk
+	}
+	if m.YesAskDollars != "" {
+		return dollarsToCentsInt(m.YesAskDollars)
+	}
+	return 0
+}
+
+// EffectiveYesBid returns the yes-bid price in cents, preferring the
+// dollar field when the deprecated integer field is zero.
+func (m Market) EffectiveYesBid() int {
+	if m.YesBid != 0 {
+		return m.YesBid
+	}
+	if m.YesBidDollars != "" {
+		return dollarsToCentsInt(m.YesBidDollars)
+	}
+	return 0
+}
+
+// EffectiveNoAsk returns the no-ask price in cents, preferring the
+// dollar field when the deprecated integer field is zero.
+func (m Market) EffectiveNoAsk() int {
+	if m.NoAsk != 0 {
+		return m.NoAsk
+	}
+	if m.NoAskDollars != "" {
+		return dollarsToCentsInt(m.NoAskDollars)
+	}
+	return 0
+}
+
+// EffectiveNoBid returns the no-bid price in cents, preferring the
+// dollar field when the deprecated integer field is zero.
+func (m Market) EffectiveNoBid() int {
+	if m.NoBid != 0 {
+		return m.NoBid
+	}
+	if m.NoBidDollars != "" {
+		return dollarsToCentsInt(m.NoBidDollars)
+	}
+	return 0
+}
+
+func dollarsToCentsInt(s string) int {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return int(math.Round(v * 100))
 }
 
 type GetMarketsResponse struct {

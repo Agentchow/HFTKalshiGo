@@ -362,7 +362,7 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 		} else if fuzzyContains(yesTeam, awayNorm) {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.EffectiveYesAsk(), YesBid: m.EffectiveYesBid(), NoAsk: m.EffectiveNoAsk(), NoBid: m.EffectiveNoBid(), Volume: m.Volume}
 	}
 	return result
 }
@@ -484,12 +484,12 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 		} else {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.EffectiveYesAsk(), YesBid: m.EffectiveYesBid(), NoAsk: m.EffectiveNoAsk(), NoBid: m.EffectiveNoBid(), Volume: m.Volume}
 	}
 	if best.drawTicker != "" {
 		for _, m := range byEvent[best.teamMarkets[0].EventTicker] {
 			if m.Ticker == best.drawTicker {
-				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.EffectiveYesAsk(), YesBid: m.EffectiveYesBid(), NoAsk: m.EffectiveNoAsk(), NoBid: m.EffectiveNoBid(), Volume: m.Volume}
 				break
 			}
 		}

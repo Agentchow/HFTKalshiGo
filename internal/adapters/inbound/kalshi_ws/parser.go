@@ -2,6 +2,7 @@ package kalshi_ws
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/events"
@@ -16,12 +17,16 @@ type wsMessage struct {
 }
 
 type tickerMsg struct {
-	MarketTicker string  `json:"market_ticker"`
-	YesAsk       float64 `json:"yes_ask"`
-	YesBid       float64 `json:"yes_bid"`
-	NoAsk        float64 `json:"no_ask"`
-	NoBid        float64 `json:"no_bid"`
-	Volume       int64   `json:"volume"`
+	MarketTicker  string  `json:"market_ticker"`
+	YesAsk        float64 `json:"yes_ask"`
+	YesBid        float64 `json:"yes_bid"`
+	NoAsk         float64 `json:"no_ask"`
+	NoBid         float64 `json:"no_bid"`
+	YesAskDollars string  `json:"yes_ask_dollars"`
+	YesBidDollars string  `json:"yes_bid_dollars"`
+	NoAskDollars  string  `json:"no_ask_dollars"`
+	NoBidDollars  string  `json:"no_bid_dollars"`
+	Volume        int64   `json:"volume"`
 }
 
 // ParseMessage converts a raw WebSocket frame into domain events.
@@ -54,12 +59,29 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		return nil
 	}
 
+	yesAsk := t.YesAsk
+	if yesAsk == 0 && t.YesAskDollars != "" {
+		yesAsk = dollarsToCents(t.YesAskDollars)
+	}
+	yesBid := t.YesBid
+	if yesBid == 0 && t.YesBidDollars != "" {
+		yesBid = dollarsToCents(t.YesBidDollars)
+	}
+	noAsk := t.NoAsk
+	if noAsk == 0 && t.NoAskDollars != "" {
+		noAsk = dollarsToCents(t.NoAskDollars)
+	}
+	noBid := t.NoBid
+	if noBid == 0 && t.NoBidDollars != "" {
+		noBid = dollarsToCents(t.NoBidDollars)
+	}
+
 	me := events.MarketEvent{
 		Ticker: t.MarketTicker,
-		YesAsk: t.YesAsk,
-		YesBid: t.YesBid,
-		NoAsk:  t.NoAsk,
-		NoBid:  t.NoBid,
+		YesAsk: yesAsk,
+		YesBid: yesBid,
+		NoAsk:  noAsk,
+		NoBid:  noBid,
 		Volume: t.Volume,
 	}
 
@@ -69,4 +91,12 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		Timestamp: time.Now(),
 		Payload:   me,
 	}}
+}
+
+func dollarsToCents(s string) float64 {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return v * 100
 }

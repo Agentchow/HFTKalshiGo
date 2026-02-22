@@ -2,7 +2,8 @@ package soccer
 
 import (
 	"strings"
-	"time"
+
+	game "github.com/charleschow/hft-trading/internal/core/state/game"
 )
 
 // SoccerState holds live state for a single soccer match.
@@ -44,20 +45,14 @@ type SoccerState struct {
 
 	ExtraTimeSettlesML bool
 
-	hasLiveData           bool
-	scoreDropPending      bool
-	scoreDropData         *scoreDropRecord
-	regHomeFrozen         *int
+	game.ScoreDropTracker
+
+	hasLiveData   bool
+	regHomeFrozen *int
 	regAwayFrozen         *int
 	regulationScoreFrozen bool
 	orderedTrades         map[tradeScoreKey]bool
 	finaled               bool
-}
-
-type scoreDropRecord struct {
-	firstSeen time.Time
-	homeScore int
-	awayScore int
 }
 
 type tradeScoreKey struct {
@@ -130,8 +125,6 @@ func (s *SoccerState) IsLive() bool {
 	return s.Half != "" && !s.IsFinished()
 }
 
-func (s *SoccerState) IsScoreDropPending() bool { return s.scoreDropPending }
-
 func (s *SoccerState) UpdateScore(homeScore, awayScore int, half string, timeRemain float64) bool {
 	firstUpdate := !s.hasLiveData
 	scoreChanged := s.HomeScore != homeScore || s.AwayScore != awayScore
@@ -162,38 +155,7 @@ func (s *SoccerState) UpdateScore(homeScore, awayScore int, half string, timeRem
 }
 
 func (s *SoccerState) CheckScoreDrop(homeScore, awayScore int, confirmSec int) string {
-	prevTotal := s.HomeScore + s.AwayScore
-	newTotal := homeScore + awayScore
-
-	if newTotal >= prevTotal {
-		if s.scoreDropPending {
-			s.ClearScoreDropPending()
-		}
-		return "accept"
-	}
-
-	now := time.Now()
-	if s.scoreDropData != nil {
-		if homeScore == s.scoreDropData.homeScore && awayScore == s.scoreDropData.awayScore {
-			if now.Sub(s.scoreDropData.firstSeen) >= time.Duration(confirmSec)*time.Second {
-				s.ClearScoreDropPending()
-				return "confirmed"
-			}
-		} else {
-			s.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-		}
-		s.scoreDropPending = true
-		return "pending"
-	}
-
-	s.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-	s.scoreDropPending = true
-	return "new_drop"
-}
-
-func (s *SoccerState) ClearScoreDropPending() {
-	s.scoreDropPending = false
-	s.scoreDropData = nil
+	return s.ScoreDropTracker.CheckDrop(s.HomeScore, s.AwayScore, homeScore, awayScore, confirmSec)
 }
 
 // UpdateRedCards sets the current counts.

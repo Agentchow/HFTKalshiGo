@@ -2,7 +2,8 @@ package football
 
 import (
 	"strings"
-	"time"
+
+	game "github.com/charleschow/hft-trading/internal/core/state/game"
 )
 
 // FootballState holds live state for a single American football game.
@@ -27,17 +28,11 @@ type FootballState struct {
 	ModelHomePct float64 // 0–100
 	ModelAwayPct float64
 
-	hasLiveData      bool
-	scoreDropPending bool
-	scoreDropData    *scoreDropRecord
-	orderedSides     map[scoreKey]bool
-	finaled          bool
-}
+	game.ScoreDropTracker
 
-type scoreDropRecord struct {
-	firstSeen time.Time
-	homeScore int
-	awayScore int
+	hasLiveData  bool
+	orderedSides map[scoreKey]bool
+	finaled      bool
 }
 
 type scoreKey struct {
@@ -103,41 +98,8 @@ func (f *FootballState) UpdateScore(homeScore, awayScore int, quarter string, ti
 }
 
 func (f *FootballState) CheckScoreDrop(homeScore, awayScore int, confirmSec int) string {
-	prevTotal := f.HomeScore + f.AwayScore
-	newTotal := homeScore + awayScore
-
-	if newTotal >= prevTotal {
-		if f.scoreDropPending {
-			f.ClearScoreDropPending()
-		}
-		return "accept"
-	}
-
-	now := time.Now()
-	if f.scoreDropData != nil {
-		if homeScore == f.scoreDropData.homeScore && awayScore == f.scoreDropData.awayScore {
-			if now.Sub(f.scoreDropData.firstSeen) >= time.Duration(confirmSec)*time.Second {
-				f.ClearScoreDropPending()
-				return "confirmed"
-			}
-		} else {
-			f.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-		}
-		f.scoreDropPending = true
-		return "pending"
-	}
-
-	f.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-	f.scoreDropPending = true
-	return "new_drop"
+	return f.ScoreDropTracker.CheckDrop(f.HomeScore, f.AwayScore, homeScore, awayScore, confirmSec)
 }
-
-func (f *FootballState) ClearScoreDropPending() {
-	f.scoreDropPending = false
-	f.scoreDropData = nil
-}
-
-func (f *FootballState) IsScoreDropPending() bool { return f.scoreDropPending }
 
 func (f *FootballState) SetTickers(home, away, _ string) {
 	f.HomeTicker = home

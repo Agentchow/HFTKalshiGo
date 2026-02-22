@@ -25,8 +25,7 @@ type Engine struct {
 	store     *store.GameStateStore
 	registry  *Registry
 	resolver  *ticker.Resolver
-	pregame   *goalserve_http.PregameClient
-	startedAt time.Time
+	pregame *goalserve_http.PregameClient
 
 	pregameMu      sync.RWMutex
 	pregameCache   []goalserve_http.PregameOdds
@@ -43,8 +42,11 @@ func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Regis
 		store:     gameStore,
 		registry:  registry,
 		resolver:  resolver,
-		pregame:   pregame,
-		startedAt: time.Now(),
+		pregame: pregame,
+	}
+
+	if pregame != nil {
+		e.refreshPregameCache()
 	}
 
 	bus.Subscribe(events.EventScoreChange, e.onScoreChange)
@@ -109,7 +111,7 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 
 		if !gc.DisplayedLive && (firstLive || scoreChanged) {
 			gc.DisplayedLive = true
-			if time.Since(e.startedAt) < 10*time.Second {
+			if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
 				printGame(gc, "LIVE")
 			} else {
 				printGame(gc, "GAME-START")
@@ -220,6 +222,7 @@ func (e *Engine) onMarketData(evt events.Event) error {
 func (e *Engine) createGameContext(sc events.ScoreChangeEvent, gameStartedAt time.Time) *game.GameContext {
 	gs := e.registry.CreateGameState(sc.Sport, sc.EID, sc.League, sc.HomeTeam, sc.AwayTeam)
 	gc := game.NewGameContext(sc.Sport, sc.League, sc.EID, gs)
+	gc.GameStartedAt = gameStartedAt
 
 	if sc.Sport == events.SportSoccer {
 		if ss, ok := gs.(*soccerState.SoccerState); ok {
@@ -391,7 +394,7 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 
 		if !gc.DisplayedLive && gc.Game.HasLiveData() {
 			gc.DisplayedLive = true
-			if time.Since(e.startedAt) < 10*time.Second {
+			if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
 				printGame(gc, "LIVE")
 			} else {
 				printGame(gc, "GAME-START")

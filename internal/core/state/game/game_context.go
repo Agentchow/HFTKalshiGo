@@ -60,6 +60,9 @@ type GameContext struct {
 	// PregameApplied tracks whether real pregame odds have been set (vs defaults).
 	PregameApplied bool
 
+	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
+	GameStartedAt time.Time
+
 	inbox chan func()
 	stop  chan struct{}
 }

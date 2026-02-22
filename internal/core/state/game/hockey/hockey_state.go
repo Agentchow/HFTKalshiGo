@@ -2,7 +2,8 @@ package hockey
 
 import (
 	"strings"
-	"time"
+
+	game "github.com/charleschow/hft-trading/internal/core/state/game"
 )
 
 // HockeyState holds the live state for a single hockey game.
@@ -32,18 +33,12 @@ type HockeyState struct {
 	PinnacleHomePct *float64 // 0–100
 	PinnacleAwayPct *float64 // 0–100
 
-	hasLiveData      bool
-	scoreDropPending bool
-	scoreDropData    *scoreDropRecord
-	orderedSides     map[scoreKey]bool
-	finaled          bool
-	shootoutLogged   bool
-}
+	game.ScoreDropTracker
 
-type scoreDropRecord struct {
-	firstSeen time.Time
-	homeScore int
-	awayScore int
+	hasLiveData    bool
+	orderedSides   map[scoreKey]bool
+	finaled        bool
+	shootoutLogged bool
 }
 
 type scoreKey struct {
@@ -112,41 +107,8 @@ func (h *HockeyState) UpdateScore(homeScore, awayScore int, period string, timeR
 }
 
 func (h *HockeyState) CheckScoreDrop(homeScore, awayScore int, confirmSec int) string {
-	prevTotal := h.HomeScore + h.AwayScore
-	newTotal := homeScore + awayScore
-
-	if newTotal >= prevTotal {
-		if h.scoreDropPending {
-			h.ClearScoreDropPending()
-		}
-		return "accept"
-	}
-
-	now := time.Now()
-	if h.scoreDropData != nil {
-		if homeScore == h.scoreDropData.homeScore && awayScore == h.scoreDropData.awayScore {
-			if now.Sub(h.scoreDropData.firstSeen) >= time.Duration(confirmSec)*time.Second {
-				h.ClearScoreDropPending()
-				return "confirmed"
-			}
-		} else {
-			h.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-		}
-		h.scoreDropPending = true
-		return "pending"
-	}
-
-	h.scoreDropData = &scoreDropRecord{firstSeen: now, homeScore: homeScore, awayScore: awayScore}
-	h.scoreDropPending = true
-	return "new_drop"
+	return h.ScoreDropTracker.CheckDrop(h.HomeScore, h.AwayScore, homeScore, awayScore, confirmSec)
 }
-
-func (h *HockeyState) ClearScoreDropPending() {
-	h.scoreDropPending = false
-	h.scoreDropData = nil
-}
-
-func (h *HockeyState) IsScoreDropPending() bool { return h.scoreDropPending }
 
 func (h *HockeyState) HasOrdered(side string) bool {
 	return h.orderedSides[scoreKey{side: side, homeScore: h.HomeScore, awayScore: h.AwayScore}]

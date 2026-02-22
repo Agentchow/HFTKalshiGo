@@ -25,7 +25,7 @@ type Event struct {
 type EventType string
 
 const (
-	// GoalServe/Genius Webhook Events
+	// GoalServe Webhook/Genius Websocket Events
 	EventScoreChange EventType = "score_change"
 	EventRedCard     EventType = "red_card"
 	EventGameFinish  EventType = "game_finish"

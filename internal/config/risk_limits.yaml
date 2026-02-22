@@ -1,41 +1,50 @@
-# Per-sport and per-league risk limits.
+# Risk configuration — single source of truth for all risk parameters.
 #
-# max_sport_cents: total spending cap across all games of this sport
-# max_game_cents:  spending cap per individual game
-# throttle_ms:     minimum interval between orders per lane
+# global:
+#   default_bankroll_cents: total bankroll budget
+#
+# sports.<sport>:
+#   max_sport_cents: total spending cap across all games of this sport
+#   leagues.<league>:
+#     max_game_cents:  spending cap per individual game
+#     throttle_ms:     minimum interval between orders per lane
 
-hockey:
-  max_sport_cents: 20000
-  leagues:
-    ahl:
-      max_game_cents: 5000
-      throttle_ms: 500
-    nhl:
-      max_game_cents: 3000
-      throttle_ms: 500
-    echl:
-      max_game_cents: 5000
-      throttle_ms: 500
+global:
+  default_bankroll_cents: 100000
 
-soccer:
-  max_sport_cents: 20000
-  leagues:
-    epl:
-      max_game_cents: 4000
-      throttle_ms: 500
-    la_liga:
-      max_game_cents: 4000
-      throttle_ms: 500
-    ucl:
-      max_game_cents: 3000
-      throttle_ms: 500
+sports:
+  hockey:
+    max_sport_cents: 20000
+    leagues:
+      ahl:
+        max_game_cents: 5000
+        throttle_ms: 500
+      nhl:
+        max_game_cents: 3000
+        throttle_ms: 500
+      echl:
+        max_game_cents: 5000
+        throttle_ms: 500
 
-football:
-  max_sport_cents: 15000
-  leagues:
-    nfl:
-      max_game_cents: 3000
-      throttle_ms: 500
-    ncaaf:
-      max_game_cents: 4000
-      throttle_ms: 500
+  soccer:
+    max_sport_cents: 20000
+    leagues:
+      epl:
+        max_game_cents: 4000
+        throttle_ms: 500
+      la_liga:
+        max_game_cents: 4000
+        throttle_ms: 500
+      ucl:
+        max_game_cents: 3000
+        throttle_ms: 500
+
+  football:
+    max_sport_cents: 15000
+    leagues:
+      nfl:
+        max_game_cents: 3000
+        throttle_ms: 500
+      ncaaf:
+        max_game_cents: 4000
+        throttle_ms: 500

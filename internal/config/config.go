@@ -24,9 +24,7 @@ type Config struct {
 	GeniusToken string
 
 	// Risk
-	RiskLimitsPath       string
-	DefaultBankrollCents int
-	MaxExposurePct       float64
+	RiskLimitsPath string
 
 	// Timing
 	ScoreDropConfirmSec int
@@ -55,10 +53,11 @@ func Load() *Config {
 		GeniusWSURL: envStr("GENIUS_WS_URL", ""),
 		GeniusToken: envStr("GENIUS_TOKEN", ""),
 
-		RiskLimitsPath:       envStr("RISK_LIMITS_PATH", "internal/config/risk_limits.yaml"),
-		DefaultBankrollCents: envInt("DEFAULT_BANKROLL_CENTS", 100_000),
-		MaxExposurePct:       envFloat("MAX_EXPOSURE_PCT", 0.25),
+		RiskLimitsPath: envStr("RISK_LIMITS_PATH", "internal/config/risk_limits.yaml"),
 
+		// Sometimes GoalServe/GeniusScore will give us a score change where score "decreases"
+		// Meaning the home team scored a Goal and the Referee decided to overturn it.
+		// We want to wait a few seconds to confirm the score drop before placing an order.
 		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 30),
 		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 60)) * time.Second,
 
@@ -80,15 +79,6 @@ func envInt(key string, fallback int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
-		}
-	}
-	return fallback
-}
-
-func envFloat(key string, fallback float64) float64 {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
 		}
 	}
 	return fallback

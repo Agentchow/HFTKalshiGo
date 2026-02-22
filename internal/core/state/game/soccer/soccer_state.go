@@ -47,8 +47,6 @@ type SoccerState struct {
 	PinnacleAwayPct *float64
 
 	ExtraTimeSettlesML bool
-	TotalExposureCents int
-	MaxExposurePct     float64
 
 	hasLiveData           bool
 	scoreDropPending      bool
@@ -74,17 +72,16 @@ type tradeScoreKey struct {
 
 func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 	return &SoccerState{
-		EID:            eid,
-		League:         league,
-		HomeTeam:       homeTeam,
-		AwayTeam:       awayTeam,
-		HomeWinPct:     0.40,
-		DrawPct:        0.25,
-		AwayWinPct:     0.35,
-		G0:             2.5,
-		TimeLeft:       90,
-		MaxExposurePct: 0.25,
-		orderedTrades:  make(map[tradeScoreKey]bool),
+		EID:           eid,
+		League:        league,
+		HomeTeam:      homeTeam,
+		AwayTeam:      awayTeam,
+		HomeWinPct:    0.40,
+		DrawPct:       0.25,
+		AwayWinPct:    0.35,
+		G0:            2.5,
+		TimeLeft:      90,
+		orderedTrades: make(map[tradeScoreKey]bool),
 	}
 }
 

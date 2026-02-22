@@ -32,9 +32,6 @@ type HockeyState struct {
 	PinnacleHomePct *float64 // 0–100
 	PinnacleAwayPct *float64 // 0–100
 
-	TotalExposureCents int
-	MaxExposurePct     float64
-
 	hasLiveData      bool
 	scoreDropPending bool
 	scoreDropData    *scoreDropRecord
@@ -57,15 +54,14 @@ type scoreKey struct {
 
 func New(eid, league, homeTeam, awayTeam string) *HockeyState {
 	return &HockeyState{
-		EID:            eid,
-		League:         league,
-		HomeTeam:       homeTeam,
-		AwayTeam:       awayTeam,
-		HomeWinPct:     0.5,
-		AwayWinPct:     0.5,
-		TimeLeft:       60,
-		MaxExposurePct: 0.25,
-		orderedSides:   make(map[scoreKey]bool),
+		EID:          eid,
+		League:       league,
+		HomeTeam:     homeTeam,
+		AwayTeam:     awayTeam,
+		HomeWinPct:   0.5,
+		AwayWinPct:   0.5,
+		TimeLeft:     60,
+		orderedSides: make(map[scoreKey]bool),
 	}
 }
 

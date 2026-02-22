@@ -17,29 +17,36 @@ type SportLimits struct {
 	Leagues       map[string]LeagueLimits  `yaml:"leagues"`
 }
 
-type RiskLimits map[string]SportLimits
+type GlobalLimits struct {
+	DefaultBankrollCents int `yaml:"default_bankroll_cents"`
+}
+
+type RiskLimits struct {
+	Global GlobalLimits           `yaml:"global"`
+	Sports map[string]SportLimits `yaml:"sports"`
+}
 
 func LoadRiskLimits(path string) (RiskLimits, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read risk limits: %w", err)
+		return RiskLimits{}, fmt.Errorf("read risk limits: %w", err)
 	}
 
 	var limits RiskLimits
 	if err := yaml.Unmarshal(data, &limits); err != nil {
-		return nil, fmt.Errorf("parse risk limits: %w", err)
+		return RiskLimits{}, fmt.Errorf("parse risk limits: %w", err)
 	}
 
 	return limits, nil
 }
 
 func (rl RiskLimits) SportLimit(sport string) (SportLimits, bool) {
-	sl, ok := rl[sport]
+	sl, ok := rl.Sports[sport]
 	return sl, ok
 }
 
 func (rl RiskLimits) LeagueLimit(sport, league string) (LeagueLimits, bool) {
-	sl, ok := rl[sport]
+	sl, ok := rl.Sports[sport]
 	if !ok {
 		return LeagueLimits{}, false
 	}

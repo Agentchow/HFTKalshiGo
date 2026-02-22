@@ -42,6 +42,13 @@ func main() {
 	// In-memory store of all active games, keyed by (sport, game_id).
 	gameStore := store.New()
 
+	// ── Risk limits from YAML ────────────────────────────────────
+	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
+	if err != nil {
+		telemetry.Errorf("risk_limits: failed to load %s: %v", cfg.RiskLimitsPath, err)
+		os.Exit(1)
+	}
+
 	// ── Strategy registry ────────────────────────────────────────
 	// Maps each sport to its trading strategy so the engine can look up
 	// the correct one when a score-change event arrives.
@@ -52,13 +59,6 @@ func main() {
 
 	// ── Strategy engine (subscribes to score changes) ────────────
 	_ = strategy.NewEngine(bus, gameStore, registry)
-
-	// ── Risk limits from YAML ────────────────────────────────────
-	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
-	if err != nil {
-		telemetry.Warnf("risk_limits: failed to load %s: %v (using defaults)", cfg.RiskLimitsPath, err)
-		riskLimits = config.RiskLimits{}
-	}
 
 	// ── Execution lane router ────────────────────────────────────
 	// Each sport gets a shared SpendGuard for the sport-level cap.

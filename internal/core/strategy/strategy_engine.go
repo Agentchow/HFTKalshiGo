@@ -92,6 +92,8 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 			return
 		}
 
+		gc.Game.RecalcEdge(gc.Tickers)
+
 		ds := e.display.Get(gc.EID)
 
 		if !ds.DisplayedLive && (firstLive || scoreChanged) {
@@ -351,6 +353,8 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 			gc.Tickers[t] = td
 			e.store.RegisterTicker(t, gc)
 		}
+
+		gc.Game.RecalcEdge(gc.Tickers)
 
 		ds := e.display.Get(gc.EID)
 		if !ds.DisplayedLive && gc.Game.HasLiveData() {

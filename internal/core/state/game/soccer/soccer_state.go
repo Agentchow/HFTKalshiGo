@@ -54,8 +54,8 @@ type SoccerState struct {
 
 	game.ScoreDropTracker
 
-	hasLiveData   bool
-	regHomeFrozen *int
+	hasLiveData           bool
+	regHomeFrozen         *int
 	regAwayFrozen         *int
 	regulationScoreFrozen bool
 	orderedTrades         map[tradeScoreKey]bool
@@ -83,7 +83,7 @@ func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 	}
 }
 
-func (s *SoccerState) GetEID() string           { return s.EID }
+func (s *SoccerState) GetEID() string            { return s.EID }
 func (s *SoccerState) GetHomeTeam() string       { return s.HomeTeam }
 func (s *SoccerState) GetAwayTeam() string       { return s.AwayTeam }
 func (s *SoccerState) GetHomeScore() int         { return s.HomeScore }
@@ -206,7 +206,7 @@ func (s *SoccerState) RecalcEdge(tickers map[string]*game.TickerData) {
 	s.EdgeHomeYes = edgeFor(pinnHome, yesAsk(tickers, s.HomeTicker))
 	s.EdgeDrawYes = edgeFor(pinnDraw, yesAsk(tickers, s.DrawTicker))
 	s.EdgeAwayYes = edgeFor(pinnAway, yesAsk(tickers, s.AwayTicker))
-	s.EdgeHomeNo = edgeFor(100-pinnHome, noAsk(tickers, s.HomeTicker))
+	s.EdgeHomeNo = edgeFor(110-pinnHome, noAsk(tickers, s.HomeTicker))
 	s.EdgeDrawNo = edgeFor(100-pinnDraw, noAsk(tickers, s.DrawTicker))
 	s.EdgeAwayNo = edgeFor(100-pinnAway, noAsk(tickers, s.AwayTicker))
 }

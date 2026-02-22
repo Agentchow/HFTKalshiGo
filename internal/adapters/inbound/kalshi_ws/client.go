@@ -2,11 +2,13 @@ package kalshi_ws
 
 import (
 	"context"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -14,21 +16,20 @@ import (
 // Client connects to the Kalshi WebSocket feed and publishes
 // MarketEvent updates onto the event bus.
 type Client struct {
-	url     string
-	apiKey  string
-	bus     *events.Bus
-	conn    *websocket.Conn
-	mu      sync.Mutex
-	done    chan struct{}
+	url    string
+	signer *kalshi_auth.Signer
+	bus    *events.Bus
+	conn   *websocket.Conn
+	mu     sync.Mutex
+	done   chan struct{}
 
-	// Tickers we're subscribed to (set externally before Connect).
 	tickers []string
 }
 
-func NewClient(wsURL, apiKey string, bus *events.Bus) *Client {
+func NewClient(wsURL string, signer *kalshi_auth.Signer, bus *events.Bus) *Client {
 	return &Client{
 		url:    wsURL,
-		apiKey: apiKey,
+		signer: signer,
 		bus:    bus,
 		done:   make(chan struct{}),
 	}
@@ -42,10 +43,13 @@ func (c *Client) SetTickers(tickers []string) {
 
 // Connect establishes the WebSocket connection and starts the read loop.
 func (c *Client) Connect(ctx context.Context) error {
-	header := make(map[string][]string)
-	if c.apiKey != "" {
-		header["Authorization"] = []string{"Bearer " + c.apiKey}
+	// Sign the WS path for auth headers (matches Python's request_headers("GET", path)).
+	parsed, _ := url.Parse(c.url)
+	wsPath := parsed.Path
+	if wsPath == "" {
+		wsPath = "/trade-api/ws/v2"
 	}
+	header := c.signer.Headers("GET", wsPath)
 
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, c.url, header)
 	if err != nil {

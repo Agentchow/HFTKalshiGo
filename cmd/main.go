@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/goalserve_webhook"
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
+	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
 	"github.com/charleschow/hft-trading/internal/core/execution"
@@ -69,8 +71,21 @@ func main() {
 	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
 	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
 
+	// ── Kalshi RSA-PSS signer (shared by HTTP + WS clients) ─────
+	if cfg.KalshiKeyID == "" || cfg.KalshiKeyFile == "" {
+		telemetry.Errorf("kalshi: missing credentials — set %s_KEYID and %s_KEYFILE in .env",
+			strings.ToUpper(cfg.KalshiMode), strings.ToUpper(cfg.KalshiMode))
+		os.Exit(1)
+	}
+	kalshiSigner, err := kalshi_auth.NewSignerFromFile(cfg.KalshiKeyID, cfg.KalshiKeyFile)
+	if err != nil {
+		telemetry.Errorf("kalshi auth: %v", err)
+		os.Exit(1)
+	}
+	telemetry.Infof("kalshi: mode=%s key=%s", cfg.KalshiMode, cfg.KalshiKeyID)
+
 	// ── Outbound: Kalshi HTTP client ─────────────────────────────
-	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, cfg.KalshiAPIKey, cfg.KalshiSecret)
+	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner)
 
 	// ── Execution service (subscribes to order intents) ──────────
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
@@ -121,8 +136,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if cfg.KalshiAPIKey != "" {
-		kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, cfg.KalshiAPIKey, bus)
+	if kalshiSigner.Enabled() {
+		kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
 		go func() {
 			if err := kalshiWS.Connect(ctx); err != nil {
 				telemetry.Warnf("kalshi_ws: failed to connect: %v", err)

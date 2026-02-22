@@ -9,22 +9,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
-	signer     *Signer
+	signer     *kalshi_auth.Signer
 }
 
-func NewClient(baseURL, apiKey, secret string) *Client {
+func NewClient(baseURL string, signer *kalshi_auth.Signer) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		signer: NewSigner(apiKey, secret),
+		signer: signer,
 	}
 }
 
@@ -47,7 +48,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	if err := c.signer.Sign(req); err != nil {
+	if err := c.signer.SignRequest(req); err != nil {
 		return nil, 0, fmt.Errorf("sign: %w", err)
 	}
 

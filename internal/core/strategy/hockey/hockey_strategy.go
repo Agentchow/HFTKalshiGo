@@ -2,6 +2,7 @@ package hockey
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
@@ -19,6 +20,7 @@ const discrepancyPct = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an o
 //  4. Compares model vs market and emits OrderIntents for edges
 type Strategy struct {
 	scoreDropConfirmSec int
+	lastPendingLog      time.Time
 }
 
 func NewStrategy(scoreDropConfirmSec int) *Strategy {
@@ -35,9 +37,17 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	if hs.HasLiveData() {
 		result := hs.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
 		switch result {
-		case "pending", "new_drop":
+		case "new_drop":
 			telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
 				result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+			s.lastPendingLog = time.Now()
+			return nil
+		case "pending":
+			if time.Since(s.lastPendingLog) >= 20*time.Second {
+				telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
+					result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+				s.lastPendingLog = time.Now()
+			}
 			return nil
 		case "confirmed":
 			hs.ClearOrdered()

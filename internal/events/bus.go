@@ -38,8 +38,7 @@ func (b *Bus) Publish(e Event) {
 
 	for _, h := range handlers {
 		if err := h(e); err != nil {
-			// logged but not fatal — one bad handler shouldn't block others
-			_ = err
+			slog.Warn(fmt.Sprintf("bus: handler error for %s: %v", e.Type, err))
 		}
 	}
 }

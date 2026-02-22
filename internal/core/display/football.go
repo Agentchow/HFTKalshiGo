@@ -17,7 +17,7 @@ func PrintFootball(gc *game.GameContext, eventType string) {
 	}
 
 	divider := dividerHeavy
-	if eventType == "TICKER UPDATE" {
+	if eventType == "EDGE" {
 		divider = dividerLight
 	}
 

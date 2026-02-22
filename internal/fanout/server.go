@@ -3,6 +3,7 @@ package fanout
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 )
 
 const (
-	clientSendBuf  = 256
-	writeDeadline  = 5 * time.Second
-	pongWait       = 30 * time.Second
-	pingInterval   = 20 * time.Second
+	clientSendBuf = 256
+	writeDeadline = 5 * time.Second
+	pongWait      = 30 * time.Second
+	pingInterval  = 20 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -98,7 +99,7 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 	s.clients[c] = struct{}{}
 	s.mu.Unlock()
 
-	telemetry.Infof("fanout: client connected sport=%s remote=%s", sport, conn.RemoteAddr())
+	telemetry.Plainf("Fanout: Client Connected [%s]", strings.ToUpper(string(sport)[:1])+string(sport)[1:])
 
 	go s.writePump(c)
 	go s.readPump(c)
@@ -158,7 +159,7 @@ func (s *Server) removeClient(c *sportClient) {
 	s.mu.Lock()
 	delete(s.clients, c)
 	s.mu.Unlock()
-	telemetry.Infof("fanout: client disconnected sport=%s", c.sport)
+	telemetry.Plainf("Fanout: Client Disconnected [%s]", strings.ToUpper(string(c.sport)[:1])+string(c.sport)[1:])
 }
 
 // ListenAndServe starts the fanout WebSocket server.

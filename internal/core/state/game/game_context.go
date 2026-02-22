@@ -1,6 +1,8 @@
 package game
 
 import (
+	"time"
+
 	"github.com/charleschow/hft-trading/internal/events"
 )
 
@@ -45,6 +47,18 @@ type GameContext struct {
 
 	// DisplayedLive tracks whether the [LIVE] block has been printed.
 	DisplayedLive bool
+
+	// Finaled tracks whether the [FINAL] block has been processed.
+	Finaled bool
+
+	// LastEdgeDisplay is the last time an edge-triggered display was printed.
+	LastEdgeDisplay time.Time
+
+	// KalshiEventURL is the link to the Kalshi event page for this game.
+	KalshiEventURL string
+
+	// PregameApplied tracks whether real pregame odds have been set (vs defaults).
+	PregameApplied bool
 
 	inbox chan func()
 	stop  chan struct{}
@@ -103,17 +117,6 @@ func (gc *GameContext) Send(fn func()) {
 func (gc *GameContext) Close() {
 	close(gc.inbox)
 	<-gc.stop
-}
-
-// HasTickerPrices returns true if at least one ticker has a non-zero price.
-// Must be called from the game's goroutine (inside a Send closure).
-func (gc *GameContext) HasTickerPrices() bool {
-	for _, td := range gc.Tickers {
-		if td.YesAsk > 0 || td.NoAsk > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // UpdateTicker sets or replaces the live market snapshot for a ticker.

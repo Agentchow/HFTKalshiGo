@@ -2,14 +2,14 @@ package events
 
 // ScoreChangeEvent is published when GoalServe reports a score update.
 type ScoreChangeEvent struct {
-	EID       string `json:"eid"`
-	Sport     Sport  `json:"sport"`
-	League    string `json:"league"`
-	HomeTeam  string `json:"home_team"`
-	AwayTeam  string `json:"away_team"`
-	HomeScore int    `json:"home_score"`
-	AwayScore int    `json:"away_score"`
-	Period    string `json:"period"` // "1st Period", "2nd Half", "Q3", etc.
+	EID       string  `json:"eid"`
+	Sport     Sport   `json:"sport"`
+	League    string  `json:"league"`
+	HomeTeam  string  `json:"home_team"`
+	AwayTeam  string  `json:"away_team"`
+	HomeScore int     `json:"home_score"`
+	AwayScore int     `json:"away_score"`
+	Period    string  `json:"period"` // "1st Period", "2nd Half", "Q3", etc.
 	TimeLeft  float64 `json:"time_left"`
 	Overturn  bool    `json:"overturn,omitempty"` // true if this score was confirmed after a drop
 
@@ -21,6 +21,10 @@ type ScoreChangeEvent struct {
 	HomeWinPct *float64 `json:"home_win_pct,omitempty"`
 	DrawPct    *float64 `json:"draw_pct,omitempty"` // soccer only
 	AwayWinPct *float64 `json:"away_win_pct,omitempty"`
+
+	// Soccer red card counts from the current webhook snapshot.
+	HomeRedCards int `json:"home_red_cards,omitempty"`
+	AwayRedCards int `json:"away_red_cards,omitempty"`
 }
 
 // MarketEvent is published when the Kalshi WebSocket reports a price change.
@@ -36,13 +40,13 @@ type MarketEvent struct {
 // OrderIntent is published by a strategy when it wants to place an order.
 // The execution service subscribes and handles risk checks + placement.
 type OrderIntent struct {
-	Sport    Sport  `json:"sport"`
-	League   string `json:"league"`
-	GameID   string `json:"game_id"`
-	EID      string `json:"eid"`
-	Ticker   string `json:"ticker"`
-	Side     string `json:"side"`    // "yes" or "no"
-	Outcome  string `json:"outcome"` // "home", "away", "draw"
+	Sport    Sport   `json:"sport"`
+	League   string  `json:"league"`
+	GameID   string  `json:"game_id"`
+	EID      string  `json:"eid"`
+	Ticker   string  `json:"ticker"`
+	Side     string  `json:"side"`    // "yes" or "no"
+	Outcome  string  `json:"outcome"` // "home", "away", "draw"
 	LimitPct float64 `json:"limit_pct"`
 	Reason   string  `json:"reason"`
 

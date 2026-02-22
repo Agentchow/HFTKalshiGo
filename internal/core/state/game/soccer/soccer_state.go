@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-type RedCard struct {
-	Team                  int     // 1=home, 2=away
-	MinutesRemainingAtRed float64
-}
-
 // SoccerState holds live state for a single soccer match.
 // Mirrors SoccerGame from the Python codebase.
 type SoccerState struct {
@@ -27,7 +22,8 @@ type SoccerState struct {
 	AwayWinPct float64
 	G0         float64 // expected total goals
 
-	RedCards []RedCard
+	HomeRedCards int
+	AwayRedCards int
 
 	HomeTicker string
 	DrawTicker string
@@ -200,11 +196,10 @@ func (s *SoccerState) ClearScoreDropPending() {
 	s.scoreDropData = nil
 }
 
-func (s *SoccerState) AddRedCard(team int, minutesRemaining float64) {
-	s.RedCards = append(s.RedCards, RedCard{
-		Team:                  team,
-		MinutesRemainingAtRed: minutesRemaining,
-	})
+// UpdateRedCards sets the current counts.
+func (s *SoccerState) UpdateRedCards(home, away int) {
+	s.HomeRedCards = home
+	s.AwayRedCards = away
 }
 
 func (s *SoccerState) RegulationGoalDiff() int {

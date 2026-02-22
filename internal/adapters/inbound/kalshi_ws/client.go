@@ -115,7 +115,7 @@ func (c *Client) readLoop(ctx context.Context) {
 		default:
 		}
 
-		c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		c.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			telemetry.Warnf("Kalshi WS read error: %v", err)

@@ -1,6 +1,8 @@
 package soccer
 
 import (
+	"time"
+
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/events"
@@ -10,6 +12,7 @@ import (
 // Strategy implements soccer-specific 3-way (1X2) trading logic.
 type Strategy struct {
 	scoreDropConfirmSec int
+	lastPendingLog      time.Time
 }
 
 func NewStrategy(scoreDropConfirmSec int) *Strategy {
@@ -22,16 +25,32 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 		return nil
 	}
 
+	tracked := len(gc.Tickers) > 0
+
 	if ss.HasLiveData() {
 		result := ss.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
 		switch result {
-		case "pending", "new_drop":
-			telemetry.Infof("soccer: score drop %s for %s (%d-%d -> %d-%d)",
-				result, sc.EID, ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+		case "new_drop":
+			if tracked {
+				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
+					result, ss.AwayTeam, ss.HomeTeam, sc.EID,
+					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+			}
+			s.lastPendingLog = time.Now()
+			return nil
+		case "pending":
+			if tracked && time.Since(s.lastPendingLog) >= 20*time.Second {
+				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
+					result, ss.AwayTeam, ss.HomeTeam, sc.EID,
+					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+				s.lastPendingLog = time.Now()
+			}
 			return nil
 		case "confirmed":
-			telemetry.Infof("soccer: overturn confirmed for %s -> %d-%d",
-				sc.EID, sc.HomeScore, sc.AwayScore)
+			if tracked {
+				telemetry.Infof("soccer: overturn confirmed for %s @ %s [%s] -> %d-%d",
+					ss.AwayTeam, ss.HomeTeam, sc.EID, sc.HomeScore, sc.AwayScore)
+			}
 		}
 	}
 
@@ -49,6 +68,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 		ss.PinnacleHomePct = &h
 		ss.PinnacleDrawPct = &d
 		ss.PinnacleAwayPct = &a
+	}
+
+	if sc.HomeRedCards > 0 || sc.AwayRedCards > 0 {
+		ss.UpdateRedCards(sc.HomeRedCards, sc.AwayRedCards)
 	}
 
 	// TODO: plug in Poisson model and 6-way edge evaluation

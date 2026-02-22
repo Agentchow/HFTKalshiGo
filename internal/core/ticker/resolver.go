@@ -37,6 +37,66 @@ var defaultSeriesTickers = map[events.Sport][]string{
 	},
 }
 
+// seriesSlugs maps an uppercase series ticker to the URL slug used in
+// kalshi.com/markets/{series}/{slug}/{event}. Zero extra API calls.
+var seriesSlugs = map[string]string{
+	// Hockey
+	"KXNHLGAME":    "nhl-game",
+	"KXAHLGAME":    "ahl-game",
+	"KXKHLGAME":    "khl-game",
+	"KXSHLGAME":    "shl-game",
+	"KXLIIGAGAME":  "liiga-game",
+	"KXWOMHOCKEY":  "winter-olympics-mens-hockey",
+	"KXWOWHOCKEY":  "winter-olympics-womens-hockey",
+	// Soccer
+	"KXEPLGAME":             "english-premier-league-game",
+	"KXUCLGAME":             "uefa-champions-league-game",
+	"KXLALIGAGAME":          "la-liga-game",
+	"KXBUNDESLIGAGAME":      "bundesliga-game",
+	"KXSERIEAGAME":          "serie-a-game",
+	"KXLIGUE1GAME":          "ligue-1-game",
+	"KXLIGAMXGAME":          "liga-mx-game",
+	"KXALEAGUEGAME":         "australian-a-league-game",
+	"KXJLEAGUEGAME":         "japan-j-league-game",
+	"KXDIMAYORGAME":         "dimayor-game",
+	"KXAFCCLGAME":           "afc-champions-league-game",
+	"KXSAUDIPLGAME":         "saudi-pro-league-game",
+	"KXUELGAME":             "uefa-europa-league-game",
+	"KXUECLGAME":            "uefa-europa-conference-league-game",
+	"KXARGPREMDIVGAME":      "argentina-primera-division-game",
+	"KXBRASILEIROGAME":      "brasileirao-game",
+	"KXSUPERLIGGAME":        "super-lig-game",
+	"KXEKSTRAKLASAGAME":     "ekstraklasa-game",
+	"KXHNLGAME":             "hnl-game",
+	"KXBUNDESLIGA2GAME":     "2-bundesliga-game",
+	"KXLALIGA2GAME":         "la-liga-2-game",
+	"KXEREDIVISIEGAME":      "eredivisie-game",
+	"KXSERIEBGAME":          "serie-b-game",
+	"KXBELGIANPLGAME":       "belgian-pro-league-game",
+	"KXEFLCHAMPIONSHIPGAME": "efl-championship-game",
+	"KXLIGAPORTUGALGAME":    "liga-portugal-game",
+	"KXDENSUPERLIGAGAME":    "danish-superliga-game",
+	// Football
+	"KXNFLGAME":   "nfl-game",
+	"KXNCAAFGAME": "ncaa-football-game",
+}
+
+// KalshiEventURL builds the full Kalshi web URL for an event ticker,
+// e.g. "https://kalshi.com/markets/kxligamxgame/liga-mx-game/kxligamxgame-26feb22tijmaz".
+// Returns "" if the series is unknown.
+func KalshiEventURL(eventTicker string) string {
+	if eventTicker == "" {
+		return ""
+	}
+	upper := strings.ToUpper(eventTicker)
+	for series, slug := range seriesSlugs {
+		if strings.HasPrefix(upper, series+"-") {
+			return "https://kalshi.com/markets/" + strings.ToLower(series) + "/" + slug + "/" + strings.ToLower(eventTicker)
+		}
+	}
+	return ""
+}
+
 // sportConfigDir maps a Sport value to its directory name inside the config dir.
 var sportConfigDir = map[events.Sport]string{
 	events.SportHockey:   "Hockey",
@@ -84,9 +144,19 @@ func loadSeriesTickers(dir string, sport events.Sport) []string {
 
 // ResolvedTickers is the result of resolving a game to Kalshi tickers.
 type ResolvedTickers struct {
-	HomeTicker string
-	AwayTicker string
-	DrawTicker string // soccer only
+	EventTicker string // Kalshi event ticker (groups all markets for one game)
+	HomeTicker  string
+	AwayTicker  string
+	DrawTicker  string // soccer only
+
+	Prices map[string]TickerSnapshot
+}
+
+// TickerSnapshot holds the ask/bid from the Kalshi GetMarkets REST response.
+type TickerSnapshot struct {
+	YesAsk int
+	YesBid int
+	Volume int64
 }
 
 // Resolver fetches Kalshi markets and matches them to games by team name.
@@ -255,13 +325,18 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 			homeNorm, awayNorm, best.timeDiff, window)
 	}
 
-	result := &ResolvedTickers{}
-	yesTeam := normalizeYesSubTitle(best.market.YesSubTitle, aliases)
-	if fuzzyContains(yesTeam, homeNorm) {
-		result.HomeTicker = best.market.Ticker
-	} else if fuzzyContains(yesTeam, awayNorm) {
-		result.AwayTicker = best.market.Ticker
+	result := &ResolvedTickers{
+		EventTicker: best.market.EventTicker,
+		Prices:      make(map[string]TickerSnapshot),
 	}
+	m := best.market
+	yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
+	if fuzzyContains(yesTeam, homeNorm) {
+		result.HomeTicker = m.Ticker
+	} else if fuzzyContains(yesTeam, awayNorm) {
+		result.AwayTicker = m.Ticker
+	}
+	result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 	return result
 }
 
@@ -366,13 +441,30 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 			homeNorm, awayNorm, best.timeDiff, window)
 	}
 
-	result := &ResolvedTickers{DrawTicker: best.drawTicker}
+	eventTicker := ""
+	if len(best.teamMarkets) > 0 {
+		eventTicker = best.teamMarkets[0].EventTicker
+	}
+	result := &ResolvedTickers{
+		EventTicker: eventTicker,
+		DrawTicker:  best.drawTicker,
+		Prices:      make(map[string]TickerSnapshot),
+	}
 	for _, m := range best.teamMarkets {
 		yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
 		if fuzzyContains(yesTeam, homeNorm) {
 			result.HomeTicker = m.Ticker
 		} else {
 			result.AwayTicker = m.Ticker
+		}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
+	}
+	if best.drawTicker != "" {
+		for _, m := range byEvent[best.teamMarkets[0].EventTicker] {
+			if m.Ticker == best.drawTicker {
+				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
+				break
+			}
 		}
 	}
 	return result

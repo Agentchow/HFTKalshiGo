@@ -1,6 +1,8 @@
 package football
 
 import (
+	"time"
+
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	fbState "github.com/charleschow/hft-trading/internal/core/state/game/football"
 	"github.com/charleschow/hft-trading/internal/events"
@@ -10,6 +12,7 @@ import (
 // Strategy implements American football trading logic.
 type Strategy struct {
 	scoreDropConfirmSec int
+	lastPendingLog      time.Time
 }
 
 func NewStrategy(scoreDropConfirmSec int) *Strategy {
@@ -25,9 +28,17 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	if fs.HasLiveData() {
 		result := fs.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
 		switch result {
-		case "pending", "new_drop":
+		case "new_drop":
 			telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
 				result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+			s.lastPendingLog = time.Now()
+			return nil
+		case "pending":
+			if time.Since(s.lastPendingLog) >= 20*time.Second {
+				telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
+					result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+				s.lastPendingLog = time.Now()
+			}
 			return nil
 		case "confirmed":
 			telemetry.Infof("football: overturn confirmed for %s -> %d-%d",

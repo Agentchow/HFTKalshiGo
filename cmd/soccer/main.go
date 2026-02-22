@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
+	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
 	"github.com/charleschow/hft-trading/internal/core/execution"
@@ -45,10 +46,16 @@ func main() {
 	// ── Ticker resolver ────────────────────────────────────────
 	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir, events.SportSoccer)
 
+	// ── Pregame odds ──────────────────────────────────────────
+	var pregameClient *goalserve_http.PregameClient
+	if cfg.GoalserveAPIKey != "" {
+		pregameClient = goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
+	}
+
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, pregameClient)
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)

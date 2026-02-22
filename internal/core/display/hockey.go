@@ -22,7 +22,7 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	}
 
 	divider := dividerHeavy
-	if eventType == "TICKER UPDATE" {
+	if eventType == "EDGE" {
 		divider = dividerLight
 	}
 
@@ -60,13 +60,22 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 		"Pregame strength (Goalserve):", homeShort, hs.HomeWinPct*100, awayShort, hs.AwayWinPct*100)
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",
 		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft)
+	hasKalshi := homeYes > 0 || homeNo > 0 || awayYes > 0 || awayNo > 0
 	if hs.HomeTicker != "" {
-		fmt.Fprintf(&b, "    Kalshi  %-28sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)
+		if hasKalshi {
+			fmt.Fprintf(&b, "    Kalshi  %-28sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)
+		} else {
+			fmt.Fprintf(&b, "    Kalshi  %-28sYes  —   |  No  —\n", homeShort+":")
+		}
 	}
 	if hs.AwayTicker != "" {
-		fmt.Fprintf(&b, "            %-28sYes %2.0fc  |  No %2.0fc\n", awayShort+":", awayYes, awayNo)
+		if hasKalshi {
+			fmt.Fprintf(&b, "            %-28sYes %2.0fc  |  No %2.0fc\n", awayShort+":", awayYes, awayNo)
+		} else {
+			fmt.Fprintf(&b, "            %-28sYes  —   |  No  —\n", awayShort+":")
+		}
 	}
-	if hs.HomeTicker != "" || hs.AwayTicker != "" {
+	if (hs.HomeTicker != "" || hs.AwayTicker != "") && hasKalshi {
 		fmt.Fprintf(&b, "    %-38s%s: %.0fc  |  %s %.0fc\n",
 			"Best odds:", homeShort, bestHome, awayShort, bestAway)
 	}
@@ -82,12 +91,22 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	fmt.Fprint(os.Stderr, b.String())
 }
 
+var teamSuffixes = map[string]bool{
+	"FC": true, "SC": true, "CF": true, "AFC": true, "FK": true,
+	"BK": true, "IF": true, "SK": true, "CD": true, "AD": true,
+	"UD": true, "SV": true, "CA": true, "RC": true,
+}
+
 func shortName(name string) string {
 	parts := strings.Fields(name)
 	if len(parts) == 0 {
 		return name
 	}
-	return parts[len(parts)-1]
+	last := parts[len(parts)-1]
+	if len(parts) > 1 && teamSuffixes[strings.ToUpper(last)] {
+		return parts[len(parts)-2]
+	}
+	return last
 }
 
 func pctOrZero(p *float64) float64 {

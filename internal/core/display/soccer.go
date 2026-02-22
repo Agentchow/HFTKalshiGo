@@ -17,7 +17,7 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	}
 
 	divider := dividerHeavy
-	if eventType == "TICKER UPDATE" {
+	if eventType == "EDGE" {
 		divider = dividerLight
 	}
 
@@ -58,33 +58,54 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)
 	fmt.Fprintf(&b, "%s\n", divider)
-	fmt.Fprintf(&b, "  %s @ %s  (Home: %s)\n", ss.AwayTeam, ss.HomeTeam, homeShort)
-	fmt.Fprintf(&b, "    %-38sHome %.0f%%  |  Draw %.0f%%  |  Away %.0f%%  |  G0=%.2f\n",
-		"Pregame:", ss.HomeWinPct*100, ss.DrawPct*100, ss.AwayWinPct*100, ss.G0)
-	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  %s (~%.0f min left)\n",
-		"Score & time:", ss.HomeScore, ss.AwayScore, ss.Half, ss.TimeLeft)
+	if gc.KalshiEventURL != "" {
+		fmt.Fprintf(&b, "  %s vs %s  |  %s\n", ss.HomeTeam, ss.AwayTeam, gc.KalshiEventURL)
+	} else {
+		fmt.Fprintf(&b, "  %s vs %s\n", ss.HomeTeam, ss.AwayTeam)
+	}
+	fmt.Fprintf(&b, "    %-38s%s %.0f%%  |  Draw %.0f%%  |  %s %.0f%%  |  G0=%.2f\n",
+		"Pregame:", homeShort, ss.HomeWinPct*100, ss.DrawPct*100, awayShort, ss.AwayWinPct*100, ss.G0)
+	scoreLine := fmt.Sprintf("Score %d-%d  |  %s (~%.0f min left)", ss.HomeScore, ss.AwayScore, ss.Half, ss.TimeLeft)
+	if ss.HomeRedCards > 0 || ss.AwayRedCards > 0 {
+		scoreLine += fmt.Sprintf("  |  Red Cards: H=%d A=%d", ss.HomeRedCards, ss.AwayRedCards)
+	}
+	fmt.Fprintf(&b, "    %-38s%s\n", "Score & time:", scoreLine)
+
+	hasKalshi := homeYes > 0 || homeNo > 0 || drawYes > 0 || drawNo > 0 || awayYes > 0 || awayNo > 0
 
 	// 3-column header
-	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", "HOME", "DRAW", "AWAY")
-	fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
+	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", homeShort, "DRAW", awayShort)
+	if hasKalshi {
+		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
+	} else {
+		fmt.Fprintf(&b, "    %-40s%6s%12s%12s\n", "Kalshi YES:", "—", "—", "—")
+	}
 	if hasPinnacle {
 		fmt.Fprintf(&b, "    %-40s%3.1f%%%11.1f%%%11.1f%%\n", "Pinnacle YES:", pinnHome, pinnDraw, pinnAway)
-		fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge YES:",
-			fmtEdge(edgeHomeYes), fmtEdge(edgeDrawYes), fmtEdge(edgeAwayYes))
+		if hasKalshi {
+			fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge YES:",
+				fmtEdge(edgeHomeYes), fmtEdge(edgeDrawYes), fmtEdge(edgeAwayYes))
+		}
 	} else {
 		fmt.Fprintf(&b, "    %-40s%s\n", "Pinnacle YES:", "(not available)")
 	}
 
 	fmt.Fprintf(&b, "\n")
-	fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
+	if hasKalshi {
+		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
+	} else {
+		fmt.Fprintf(&b, "    %-40s%6s%12s%12s\n", "Kalshi NO:", "—", "—", "—")
+	}
 	if hasPinnacle {
 		fmt.Fprintf(&b, "    %-40s%3.1f%%%11.1f%%%11.1f%%\n", "Pinnacle NO:", 100-pinnHome, 100-pinnDraw, 100-pinnAway)
-		fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge NO:",
-			fmtEdge(edgeHomeNo), fmtEdge(edgeDrawNo), fmtEdge(edgeAwayNo))
+		if hasKalshi {
+			fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge NO:",
+				fmtEdge(edgeHomeNo), fmtEdge(edgeDrawNo), fmtEdge(edgeAwayNo))
+		}
 	}
 
-	// Edge summary line
-	if hasPinnacle {
+	// Edge summary line — only when both sources are available
+	if hasPinnacle && hasKalshi {
 		var edges []string
 		for _, e := range []struct {
 			name string

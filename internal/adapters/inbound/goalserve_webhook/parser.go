@@ -35,7 +35,7 @@ type EventInfo struct {
 	Name       string `json:"name"`
 	Period     string `json:"period"`
 	Status     string `json:"status"`
-	Timer      string `json:"timer"`
+	Minute     string `json:"minute"`
 	Seconds    string `json:"seconds"`
 	League     string `json:"league"`
 	Category   string `json:"category"`
@@ -126,6 +126,8 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			continue
 		}
 
+		homeRC, awayRC := p.extractRedCards(&ev)
+
 		scoreEvt := events.ScoreChangeEvent{
 			EID:          eid,
 			Sport:        p.sport,
@@ -135,8 +137,10 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			HomeScore:    homeScore,
 			AwayScore:    awayScore,
 			Period:       period,
-			TimeLeft:     p.estimateTimeRemaining(period),
+			TimeLeft:     p.calcTimeRemaining(period, ev.Info.Minute, ev.Info.Seconds),
 			GameStartUTC: parseStartTsUTC(ev.Info.StartTsUTC),
+			HomeRedCards:  homeRC,
+			AwayRedCards:  awayRC,
 		}
 		if odds != nil {
 			scoreEvt.HomeWinPct = odds.HomeWinPct
@@ -206,48 +210,75 @@ func (p *Parser) isFinished(period string) bool {
 	return false
 }
 
-// estimateTimeRemaining maps period strings to approximate minutes remaining.
-func (p *Parser) estimateTimeRemaining(period string) float64 {
+// calcTimeRemaining computes minutes remaining from the period string plus
+// the Minute field (soccer: elapsed minutes) or Seconds field (hockey: period clock).
+func (p *Parser) calcTimeRemaining(period, minute, seconds string) float64 {
 	low := strings.ToLower(strings.TrimSpace(period))
 	switch p.sport {
-	case events.SportHockey:
-		return hockeyTimeRemaining(low)
 	case events.SportSoccer:
-		return soccerTimeRemaining(low)
+		return soccerTimeRemaining(low, minute)
+	case events.SportHockey:
+		return hockeyTimeRemaining(low, seconds)
 	case events.SportFootball:
 		return footballTimeRemaining(low)
 	}
 	return 0
 }
 
-func hockeyTimeRemaining(period string) float64 {
+// soccerTimeRemaining parses the GoalServe minute field (elapsed minutes)
+// and returns regulation minutes remaining. Handles formats: "34", "45+2", "67:23".
+func soccerTimeRemaining(period, minute string) float64 {
 	switch {
-	case strings.Contains(period, "1st"):
-		return 40
-	case strings.Contains(period, "2nd"):
-		return 20
-	case strings.Contains(period, "3rd"):
+	case strings.Contains(period, "finished") || period == "ft" || period == "ended":
 		return 0
-	case strings.Contains(period, "overtime") || period == "ot":
+	case strings.Contains(period, "half time") || period == "ht" || period == "halftime":
+		return 45
+	case strings.Contains(period, "extra") || period == "et":
 		return 0
-	default:
-		return 60
+	case strings.Contains(period, "penalties") || period == "pen":
+		return 0
 	}
-}
 
-func soccerTimeRemaining(period string) float64 {
-	switch {
-	case strings.Contains(period, "1st half"):
+	m := strings.TrimSpace(minute)
+	if m != "" {
+		elapsed := parseTimer(m)
+		remain := 90.0 - elapsed
+		if remain < 0 {
+			remain = 0
+		}
+		return remain
+	}
+
+	if strings.Contains(period, "1st half") || strings.Contains(period, "1st") {
 		return 45
-	case strings.Contains(period, "half time") || period == "ht":
+	}
+	if strings.Contains(period, "2nd half") || strings.Contains(period, "2nd") {
 		return 45
-	case strings.Contains(period, "2nd half"):
-		return 0
-	case strings.Contains(period, "extra"):
-		return 0
-	default:
+	}
+	if period == "not started" || period == "" {
 		return 90
 	}
+	return 90
+}
+
+// hockeyTimeRemaining parses the period string and the Seconds field
+// (MM:SS countdown clock within the current period) to compute total minutes remaining.
+func hockeyTimeRemaining(period, seconds string) float64 {
+	periodMins := parsePeriodClock(seconds, 20.0)
+
+	switch {
+	case strings.Contains(period, "1st"):
+		return periodMins + 40
+	case strings.Contains(period, "2nd"):
+		return periodMins + 20
+	case strings.Contains(period, "3rd"):
+		return periodMins
+	case strings.Contains(period, "overtime") || period == "ot":
+		return 5
+	case strings.Contains(period, "shootout") || strings.Contains(period, "penalties"):
+		return 0
+	}
+	return 60
 }
 
 func footballTimeRemaining(period string) float64 {
@@ -267,6 +298,58 @@ func footballTimeRemaining(period string) float64 {
 	default:
 		return 60
 	}
+}
+
+// parseTimer parses the GoalServe timer string (elapsed minutes) into a float.
+// Handles: "34", "45+2" (stoppage), "67:23" (min:sec).
+func parseTimer(timer string) float64 {
+	t := strings.TrimSpace(timer)
+	if t == "" {
+		return 0
+	}
+
+	if strings.Contains(t, "+") {
+		parts := strings.SplitN(t, "+", 2)
+		base, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+		added, err2 := strconv.ParseFloat(strings.TrimSpace(strings.Split(parts[1], ":")[0]), 64)
+		if err1 == nil && err2 == nil {
+			return base + added
+		}
+	}
+
+	if strings.Contains(t, ":") {
+		parts := strings.SplitN(t, ":", 2)
+		mins, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+		if err == nil {
+			return mins
+		}
+	}
+
+	if v, err := strconv.ParseFloat(t, 64); err == nil {
+		return v
+	}
+	return 0
+}
+
+// parsePeriodClock parses a "MM:SS" countdown clock string into minutes remaining
+// in the current period. Returns defaultVal if unparseable.
+func parsePeriodClock(seconds string, defaultVal float64) float64 {
+	s := strings.TrimSpace(seconds)
+	if s == "" {
+		return defaultVal
+	}
+	if strings.Contains(s, ":") {
+		parts := strings.SplitN(s, ":", 2)
+		mins, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+		secs, err2 := strconv.Atoi(strings.TrimSpace(parts[1][:min(2, len(parts[1]))]))
+		if err1 == nil && err2 == nil {
+			return float64(mins) + float64(secs)/60.0
+		}
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil && v > 0 {
+		return v
+	}
+	return defaultVal
 }
 
 // ParsedOdds holds vig-free implied probabilities extracted from a webhook event.
@@ -386,6 +469,56 @@ func parseStartTsUTC(s string) int64 {
 		v /= 1000 // milliseconds → seconds
 	}
 	return v
+}
+
+// extractRedCards pulls red-card counts from the webhook event.
+// GoalServe sends these in Stats (as numeric strings or numbers) or Core.
+func (p *Parser) extractRedCards(ev *WebhookEvent) (home, away int) {
+	if p.sport != events.SportSoccer {
+		return 0, 0
+	}
+
+	home = intFromMap(ev.Stats, "redcards_home", "red_cards_home", "home_redcards")
+	away = intFromMap(ev.Stats, "redcards_away", "red_cards_away", "away_redcards")
+
+	if home == 0 && away == 0 {
+		home = intFromStringMap(ev.Core, "redcards_home", "red_cards_home", "home_redcards")
+		away = intFromStringMap(ev.Core, "redcards_away", "red_cards_away", "away_redcards")
+	}
+
+	return home, away
+}
+
+// intFromMap tries several keys in a map[string]any and returns the first
+// value that can be interpreted as a non-zero int.
+func intFromMap(m map[string]any, keys ...string) int {
+	for _, k := range keys {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		switch val := v.(type) {
+		case float64:
+			return int(val)
+		case string:
+			if n, err := strconv.Atoi(val); err == nil {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+// intFromStringMap tries several keys in a map[string]string.
+func intFromStringMap(m map[string]string, keys ...string) int {
+	for _, k := range keys {
+		if s, ok := m[k]; ok {
+			if n, err := strconv.Atoi(s); err == nil {
+				return n
+			}
+		}
+	}
+	return 0
 }
 
 func containsAny(s string, substrs []string) bool {

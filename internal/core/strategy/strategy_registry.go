@@ -8,18 +8,28 @@ import (
 	"github.com/charleschow/hft-trading/internal/events"
 )
 
+// EvalResult is returned by Evaluate. It carries order intents plus
+// optional display event names (e.g. "RED-CARD") that the engine
+// should trigger after the standard LIVE/GOAL/GAME-START display logic.
+type EvalResult struct {
+	Intents       []events.OrderIntent
+	DisplayEvents []string
+}
+
 // Strategy is the interface each sport must implement.
 type Strategy interface {
-	// Evaluate is called on each score change. Returns zero or more OrderIntents.
-	Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) []events.OrderIntent
+	// Evaluate is called on each score change.
+	Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) EvalResult
 
 	// OnPriceUpdate is called when a Kalshi market price changes.
-	// It re-checks edges against stored model probabilities without
-	// recomputing the model. Returns zero or more OrderIntents.
 	OnPriceUpdate(gc *game.GameContext) []events.OrderIntent
 
 	// OnFinish is called when a game ends. Returns "slam" orders for settled markets.
 	OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent
+
+	// HasSignificantEdge returns true when the game has a model-vs-market
+	// edge worth displaying. Used by the engine for throttled EDGE prints.
+	HasSignificantEdge(gc *game.GameContext) bool
 }
 
 // Registry maps sport -> strategy implementation.

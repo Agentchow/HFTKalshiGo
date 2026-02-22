@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -13,26 +14,38 @@ import (
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
+// TickerSubscriber subscribes to Kalshi WS orderbook updates for specific
+// market tickers. The strategy engine calls this when new tickers are
+// discovered via the resolver.
+type TickerSubscriber interface {
+	SubscribeTickers(tickers []string) error
+}
+
 // Engine subscribes to ScoreChangeEvent, MarketEvent, and GameFinishEvent.
 // It routes each event to the correct GameContext's goroutine via Send().
 // Strategy evaluation and order intent publishing happen on the game's
 // goroutine — never on the webhook or WS goroutine.
 type Engine struct {
-	bus      *events.Bus
-	store    *store.GameStateStore
-	registry *Registry
-	resolver *ticker.Resolver
+	bus        *events.Bus
+	store      *store.GameStateStore
+	registry   *Registry
+	resolver   *ticker.Resolver
+	display    *display.Tracker
+	subscriber TickerSubscriber
 
 	kalshiWSUp atomic.Bool
 }
 
-func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver) *Engine {
+func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver, subscriber TickerSubscriber) *Engine {
 	e := &Engine{
-		bus:      bus,
-		store:    gameStore,
-		registry: registry,
-		resolver: resolver,
+		bus:        bus,
+		store:      gameStore,
+		registry:   registry,
+		resolver:   resolver,
+		subscriber: subscriber,
+		display:    display.NewTracker(),
 	}
+	e.kalshiWSUp.Store(true)
 
 	bus.Subscribe(events.EventScoreChange, e.onScoreChange)
 	bus.Subscribe(events.EventGameFinish, e.onGameFinish)
@@ -79,19 +92,23 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 			return
 		}
 
-		if !gc.DisplayedLive && (firstLive || scoreChanged) {
-			gc.DisplayedLive = true
-			if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
-				printGame(gc, "LIVE")
-			} else {
+		ds := e.display.Get(gc.EID)
+
+		if !ds.DisplayedLive && (firstLive || scoreChanged) {
+			ds.DisplayedLive = true
+			if isGameStart(gc) {
 				printGame(gc, "GAME-START")
+			} else {
+				printGame(gc, "LIVE")
 			}
 		} else if scoreChanged {
 			printGame(gc, "GOAL")
 		}
 
 		for _, evt := range result.DisplayEvents {
-			printGame(gc, evt)
+			if ds.DisplayedLive {
+				printGame(gc, evt)
+			}
 		}
 	})
 
@@ -110,10 +127,11 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 	}
 
 	gc.Send(func() {
-		if gc.Finaled {
+		ds := e.display.Get(gc.EID)
+		if ds.Finaled {
 			return
 		}
-		gc.Finaled = true
+		ds.Finaled = true
 
 		strat, ok := e.registry.Get(gf.Sport)
 		if !ok {
@@ -123,7 +141,7 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 		intents := strat.OnFinish(gc, &gf)
 		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
 
-		if gc.DisplayedLive {
+		if ds.DisplayedLive {
 			printGame(gc, "FINAL")
 		}
 
@@ -142,24 +160,6 @@ func (e *Engine) onMarketData(evt events.Event) error {
 		return nil
 	}
 
-	noAsk := me.NoAsk
-	noBid := me.NoBid
-	if noAsk == 0 {
-		noAsk = 100
-	}
-	if noBid == 0 {
-		noBid = 100
-	}
-
-	td := &game.TickerData{
-		Ticker: me.Ticker,
-		YesAsk: me.YesAsk,
-		YesBid: me.YesBid,
-		NoAsk:  noAsk,
-		NoBid:  noBid,
-		Volume: me.Volume,
-	}
-
 	targets := e.store.ByTicker(me.Ticker)
 	if len(targets) == 0 {
 		return nil
@@ -168,9 +168,29 @@ func (e *Engine) onMarketData(evt events.Event) error {
 	for _, gc := range targets {
 		gc.Send(func() {
 			gc.KalshiConnected = true
+
+			existing, hasExisting := gc.Tickers[me.Ticker]
+			td := &game.TickerData{
+				Ticker: me.Ticker,
+				YesAsk: me.YesAsk,
+				YesBid: me.YesBid,
+				NoAsk:  me.NoAsk,
+				NoBid:  me.NoBid,
+				Volume: me.Volume,
+			}
+			if hasExisting {
+				if td.NoAsk == 0 {
+					td.NoAsk = existing.NoAsk
+				}
+				if td.NoBid == 0 {
+					td.NoBid = existing.NoBid
+				}
+			}
 			gc.UpdateTicker(td)
 
-			if !gc.Game.HasLiveData() || !gc.DisplayedLive {
+			ds := e.display.Get(gc.EID)
+
+			if !gc.Game.HasLiveData() || !ds.DisplayedLive {
 				return
 			}
 
@@ -183,11 +203,11 @@ func (e *Engine) onMarketData(evt events.Event) error {
 				e.publishIntents(intents, gc.Sport, gc.League, gc.EID, evt.Timestamp)
 			}
 
-			if time.Since(gc.LastEdgeDisplay) < edgeDisplayThrottle {
+			if time.Since(ds.LastEdgeDisplay) < edgeDisplayThrottle {
 				return
 			}
 			if strat.HasSignificantEdge(gc) {
-				gc.LastEdgeDisplay = time.Now()
+				ds.LastEdgeDisplay = time.Now()
 				printGame(gc, "EDGE")
 			}
 		})
@@ -205,7 +225,7 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	e.kalshiWSUp.Store(connected)
 
 	if connected {
-		telemetry.Infof("strategy: Kalshi WS reconnected, restoring live prices")
+		telemetry.Infof("strategy: Kalshi WS reconnected, waiting for live prices")
 	} else {
 		telemetry.Warnf("strategy: Kalshi WS disconnected, resetting all ticker prices to 100")
 	}
@@ -253,6 +273,25 @@ func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport
 	}
 }
 
+// isGameStart returns true only when the game genuinely appears to be
+// just starting: first period, no goals, and (if we have a real start
+// time) within 5 minutes of puck-drop. AHL/KHL feeds often omit
+// GameStartUTC, so we also look at game state to avoid labelling a
+// 3-0 mid-game as "GAME-START".
+func isGameStart(gc *game.GameContext) bool {
+	if gc.Game.GetHomeScore() > 0 || gc.Game.GetAwayScore() > 0 {
+		return false
+	}
+	p := strings.ToLower(gc.Game.GetPeriod())
+	if p != "" && !strings.Contains(p, "1st") && p != "not started" {
+		return false
+	}
+	if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
+		return false
+	}
+	return true
+}
+
 func printGame(gc *game.GameContext, eventType string) {
 	switch gc.Sport {
 	case events.SportHockey:
@@ -272,34 +311,38 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 		return
 	}
 
+	allTickers := resolved.AllTickers()
+	if e.subscriber != nil {
+		if err := e.subscriber.SubscribeTickers(allTickers); err != nil {
+			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", sc.HomeTeam, sc.AwayTeam, err)
+		}
+	}
+
 	gc.Send(func() {
 		gc.KalshiConnected = e.kalshiWSUp.Load()
 		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
 		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
 
-		for _, t := range resolved.AllTickers() {
-			td := &game.TickerData{Ticker: t, NoAsk: 100, NoBid: 100}
+		for _, t := range allTickers {
+			td := &game.TickerData{Ticker: t}
 			if snap, ok := resolved.Prices[t]; ok {
 				td.YesAsk = float64(snap.YesAsk)
 				td.YesBid = float64(snap.YesBid)
-				if snap.YesBid > 0 {
-					td.NoAsk = float64(100 - snap.YesBid)
-				}
-				if snap.YesAsk > 0 {
-					td.NoBid = float64(100 - snap.YesAsk)
-				}
+				td.NoAsk = float64(snap.NoAsk)
+				td.NoBid = float64(snap.NoBid)
 				td.Volume = snap.Volume
 			}
 			gc.Tickers[t] = td
 			e.store.RegisterTicker(t, gc)
 		}
 
-		if !gc.DisplayedLive && gc.Game.HasLiveData() {
-			gc.DisplayedLive = true
-			if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
-				printGame(gc, "LIVE")
-			} else {
+		ds := e.display.Get(gc.EID)
+		if !ds.DisplayedLive && gc.Game.HasLiveData() {
+			ds.DisplayedLive = true
+			if isGameStart(gc) {
 				printGame(gc, "GAME-START")
+			} else {
+				printGame(gc, "LIVE")
 			}
 		}
 	})

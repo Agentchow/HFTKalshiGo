@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
@@ -24,16 +25,6 @@ var preferredBookmakers = []string{
 	"pinnacle", "pin", "pinnaclesports",
 	"bet365", "williamhill", "william hill",
 	"1xbet", "marathon", "unibet",
-}
-
-// PregameOdds holds vig-free 1X2 probabilities and expected total goals for one match.
-type PregameOdds struct {
-	HomeTeam   string
-	AwayTeam   string
-	HomeWinPct float64 // 0–1
-	DrawPct    float64 // 0–1
-	AwayWinPct float64 // 0–1
-	G0         float64 // expected total goals
 }
 
 // PregameClient fetches pregame odds from the GoalServe HTTP API.
@@ -53,7 +44,7 @@ func NewPregameClient(apiKey string) *PregameClient {
 
 // FetchSoccerPregame fetches all soccer pregame odds from GoalServe and returns
 // a slice of parsed matches. The caller should match by team name.
-func (c *PregameClient) FetchSoccerPregame() ([]PregameOdds, error) {
+func (c *PregameClient) FetchSoccerPregame() ([]odds.PregameOdds, error) {
 	c.rateLimit()
 
 	url := fmt.Sprintf("%s/%s/getodds/soccer?cat=%s&json=1", goalserveBase, c.apiKey, soccerPregameCat)
@@ -123,7 +114,7 @@ type gsTeam struct {
 	Name string `json:"name"`
 }
 
-func parseSoccerPregameJSON(data []byte) ([]PregameOdds, error) {
+func parseSoccerPregameJSON(data []byte) ([]odds.PregameOdds, error) {
 	// Strip UTF-8 BOM if present
 	data = stripBOM(data)
 
@@ -139,20 +130,20 @@ func parseSoccerPregameJSON(data []byte) ([]PregameOdds, error) {
 
 	cats := extractCategories(scoresRaw)
 
-	var out []PregameOdds
+	var out []odds.PregameOdds
 	for _, cat := range cats {
 		matches := extractMatches(cat)
 		for _, m := range matches {
-			odds := extract1X2andOU(m)
-			if odds == nil {
+			parsed := extract1X2andOU(m)
+			if parsed == nil {
 				continue
 			}
-			odds.HomeTeam = strings.TrimSpace(m.LocalTeam.Name)
-			odds.AwayTeam = strings.TrimSpace(m.VisitorTeam.Name)
-			if odds.HomeTeam == "" || odds.AwayTeam == "" {
+			parsed.HomeTeam = strings.TrimSpace(m.LocalTeam.Name)
+			parsed.AwayTeam = strings.TrimSpace(m.VisitorTeam.Name)
+			if parsed.HomeTeam == "" || parsed.AwayTeam == "" {
 				continue
 			}
-			out = append(out, *odds)
+			out = append(out, *parsed)
 		}
 	}
 	return out, nil
@@ -255,7 +246,7 @@ type totalGroup struct {
 	Odds   json.RawMessage `json:"odds"`
 }
 
-func extract1X2andOU(m gsMatch) *PregameOdds {
+func extract1X2andOU(m gsMatch) *odds.PregameOdds {
 	oddsTypes := parseOddsTypes(m.Odds)
 	if len(oddsTypes) == 0 {
 		return nil
@@ -283,9 +274,9 @@ func extract1X2andOU(m gsMatch) *PregameOdds {
 		return nil
 	}
 
-	odds := parseOddEntries(bm)
+	oddEntries := parseOddEntries(bm)
 	var homeDec, drawDec, awayDec float64
-	for _, o := range odds {
+	for _, o := range oddEntries {
 		name := strings.TrimSpace(o.Name)
 		val := parseFloat(o.Value)
 		if val <= 1.0 {
@@ -304,10 +295,10 @@ func extract1X2andOU(m gsMatch) *PregameOdds {
 		return nil
 	}
 
-	h, d, a := removeVig3(homeDec, drawDec, awayDec)
+	h, d, a := odds.RemoveVig3(homeDec, drawDec, awayDec)
 	g0 := extractG0FromOU(oddsTypes)
 
-	return &PregameOdds{
+	return &odds.PregameOdds{
 		HomeWinPct: h,
 		DrawPct:    d,
 		AwayWinPct: a,
@@ -340,14 +331,14 @@ func extractG0FromOU(oddsTypes []oddsType) float64 {
 
 	// Strategy 1: grouped totals
 	if over, under, ok := extractFromTotals(bm, "2.5"); ok {
-		_, pUnder := removeVig2(over, under)
-		return math.Round(inferG0FromOU25(pUnder)*1000) / 1000
+		_, pUnder := odds.RemoveVig2(over, under)
+		return math.Round(odds.InferG0FromOU25(pUnder)*1000) / 1000
 	}
 
 	// Strategy 2: flat odds with "total" attribute
-	odds := parseOddEntries(bm)
+	oddEntries := parseOddEntries(bm)
 	var overDec, underDec float64
-	for _, o := range odds {
+	for _, o := range oddEntries {
 		if strings.TrimSpace(o.Total) != "2.5" {
 			continue
 		}
@@ -363,8 +354,8 @@ func extractG0FromOU(oddsTypes []oddsType) float64 {
 		}
 	}
 	if overDec > 0 && underDec > 0 {
-		_, pUnder := removeVig2(overDec, underDec)
-		return math.Round(inferG0FromOU25(pUnder)*1000) / 1000
+		_, pUnder := odds.RemoveVig2(overDec, underDec)
+		return math.Round(odds.InferG0FromOU25(pUnder)*1000) / 1000
 	}
 
 	return 2.5
@@ -429,46 +420,6 @@ func extractFromTotals(bm *bookmaker, targetTotal string) (over, under float64, 
 		}
 	}
 	return 0, 0, false
-}
-
-// --- Math ---
-
-func removeVig2(a, b float64) (float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	total := rawA + rawB
-	return rawA / total, rawB / total
-}
-
-func removeVig3(a, b, c float64) (float64, float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	rawC := 1.0 / c
-	total := rawA + rawB + rawC
-	return rawA / total, rawB / total, rawC / total
-}
-
-func poissonCDF2(g0 float64) float64 {
-	if g0 <= 0 {
-		return 1.0
-	}
-	return math.Exp(-g0) * (1.0 + g0 + g0*g0/2.0)
-}
-
-func inferG0FromOU25(pUnder float64) float64 {
-	if pUnder <= 0.01 || pUnder >= 0.99 {
-		return 2.5
-	}
-	lo, hi := 0.1, 8.0
-	for range 60 {
-		mid := (lo + hi) / 2.0
-		if poissonCDF2(mid) > pUnder {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-	return (lo + hi) / 2.0
 }
 
 // --- Helpers ---

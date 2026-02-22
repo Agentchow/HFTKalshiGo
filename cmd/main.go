@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/goalserve_webhook"
-	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
@@ -98,24 +97,12 @@ func main() {
 		}
 	}
 
-	// ── Kalshi WebSocket ───────────────────────────────────────
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
-	go func() {
-		if err := kalshiWS.Connect(ctx); err != nil {
-			telemetry.Warnf("Kalshi WS: %v", err)
-		}
-	}()
-
 	// ── Shutdown ───────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
 	telemetry.Infof("Shutting down...")
-	cancel()
 
 	if ngrokProc != nil {
 		ngrokProc.Signal(syscall.SIGTERM)

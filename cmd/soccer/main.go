@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
@@ -47,15 +48,18 @@ func main() {
 	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir, events.SportSoccer)
 
 	// ── Pregame odds ──────────────────────────────────────────
-	var pregameClient *goalserve_http.PregameClient
+	var pregame soccerStrat.PregameOddsProvider
 	if cfg.GoalserveAPIKey != "" {
-		pregameClient = goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
+		pregame = goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
 	}
+
+	// ── Kalshi WebSocket ──────────────────────────────────────
+	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregameClient))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
+	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregame))
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
@@ -68,12 +72,18 @@ func main() {
 	registerLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
 
-	// ── Fanout client ──────────────────────────────────────────
+	// ── Fanout client & Kalshi WS ─────────────────────────────
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	fanoutClient := fanout.NewClient(cfg.FanoutAddr, events.SportSoccer, bus)
 	go fanoutClient.ConnectWithRetry(ctx)
+
+	go func() {
+		if err := kalshiWS.Connect(ctx); err != nil {
+			telemetry.Warnf("Kalshi WS: %v", err)
+		}
+	}()
 
 	// ── Shutdown ───────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)

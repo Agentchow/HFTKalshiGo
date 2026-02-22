@@ -46,15 +46,6 @@ type GameContext struct {
 	// Fills recorded against this game.
 	Fills []Fill
 
-	// DisplayedLive tracks whether the [LIVE] block has been printed.
-	DisplayedLive bool
-
-	// Finaled tracks whether the [FINAL] block has been processed.
-	Finaled bool
-
-	// LastEdgeDisplay is the last time an edge-triggered display was printed.
-	LastEdgeDisplay time.Time
-
 	// KalshiEventURL is the link to the Kalshi event page for this game.
 	KalshiEventURL string
 

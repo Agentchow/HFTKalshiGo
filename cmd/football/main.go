@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
@@ -45,10 +46,13 @@ func main() {
 	// ── Ticker resolver ────────────────────────────────────────
 	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir, events.SportFootball)
 
+	// ── Kalshi WebSocket ──────────────────────────────────────
+	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
+
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
@@ -61,12 +65,18 @@ func main() {
 	registerLanes(laneRouter, riskLimits, events.SportFootball, "football")
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
 
-	// ── Fanout client ──────────────────────────────────────────
+	// ── Fanout client & Kalshi WS ─────────────────────────────
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	fanoutClient := fanout.NewClient(cfg.FanoutAddr, events.SportFootball, bus)
 	go fanoutClient.ConnectWithRetry(ctx)
+
+	go func() {
+		if err := kalshiWS.Connect(ctx); err != nil {
+			telemetry.Warnf("Kalshi WS: %v", err)
+		}
+	}()
 
 	// ── Shutdown ───────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)

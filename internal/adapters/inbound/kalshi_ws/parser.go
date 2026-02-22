@@ -15,7 +15,7 @@ type wsMessage struct {
 	SID  int64           `json:"sid"`
 }
 
-type orderBookDelta struct {
+type tickerMsg struct {
 	MarketTicker string  `json:"market_ticker"`
 	YesAsk       float64 `json:"yes_ask"`
 	YesBid       float64 `json:"yes_bid"`
@@ -33,33 +33,38 @@ func ParseMessage(data []byte) []events.Event {
 	}
 
 	switch msg.Type {
-	case "orderbook_snapshot", "orderbook_delta":
-		return parseOrderBookUpdate(msg.Msg)
+	case "ticker":
+		return parseTickerUpdate(msg.Msg)
+	case "subscribed", "unsubscribed", "ok", "error":
+		if msg.Type == "error" {
+			telemetry.Warnf("kalshi_ws: server error: %s", string(msg.Msg))
+		}
+		return nil
 	default:
 		return nil
 	}
 }
 
-func parseOrderBookUpdate(raw json.RawMessage) []events.Event {
-	var delta orderBookDelta
-	if err := json.Unmarshal(raw, &delta); err != nil {
+func parseTickerUpdate(raw json.RawMessage) []events.Event {
+	var t tickerMsg
+	if err := json.Unmarshal(raw, &t); err != nil {
 		return nil
 	}
-	if delta.MarketTicker == "" {
+	if t.MarketTicker == "" {
 		return nil
 	}
 
 	me := events.MarketEvent{
-		Ticker: delta.MarketTicker,
-		YesAsk: delta.YesAsk,
-		YesBid: delta.YesBid,
-		NoAsk:  delta.NoAsk,
-		NoBid:  delta.NoBid,
-		Volume: delta.Volume,
+		Ticker: t.MarketTicker,
+		YesAsk: t.YesAsk,
+		YesBid: t.YesBid,
+		NoAsk:  t.NoAsk,
+		NoBid:  t.NoBid,
+		Volume: t.Volume,
 	}
 
 	return []events.Event{{
-		ID:        delta.MarketTicker,
+		ID:        t.MarketTicker,
 		Type:      events.EventMarketData,
 		Timestamp: time.Now(),
 		Payload:   me,

@@ -16,6 +16,8 @@ import (
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
+var _ MarketFetcher = (*kalshi_http.Client)(nil)
+
 // defaultSeriesTickers is the hardcoded fallback when no config file is found.
 var defaultSeriesTickers = map[events.Sport][]string{
 	events.SportHockey: {
@@ -157,12 +159,14 @@ type ResolvedTickers struct {
 type TickerSnapshot struct {
 	YesAsk int
 	YesBid int
+	NoAsk  int
+	NoBid  int
 	Volume int64
 }
 
 // Resolver fetches Kalshi markets and matches them to games by team name.
 type Resolver struct {
-	client        *kalshi_http.Client
+	client        MarketFetcher
 	mu            sync.RWMutex
 	markets       map[events.Sport][]kalshi_http.Market
 	lastFetch     map[events.Sport]time.Time
@@ -171,7 +175,7 @@ type Resolver struct {
 	sfGroup       singleflight.Group
 }
 
-func NewResolver(client *kalshi_http.Client, tickersConfigDir string, sports ...events.Sport) *Resolver {
+func NewResolver(client MarketFetcher, tickersConfigDir string, sports ...events.Sport) *Resolver {
 	if len(sports) == 0 {
 		sports = []events.Sport{events.SportHockey, events.SportSoccer, events.SportFootball}
 	}
@@ -358,7 +362,7 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 		} else if fuzzyContains(yesTeam, awayNorm) {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
 	}
 	return result
 }
@@ -480,12 +484,12 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 		} else {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
 	}
 	if best.drawTicker != "" {
 		for _, m := range byEvent[best.teamMarkets[0].EventTicker] {
 			if m.Ticker == best.drawTicker {
-				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
+				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
 				break
 			}
 		}

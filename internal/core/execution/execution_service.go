@@ -11,6 +11,8 @@ import (
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
+var _ OrderPlacer = (*kalshi_http.Client)(nil)
+
 // Service subscribes to OrderIntent events, applies risk checks via the
 // lane router, and places orders through the Kalshi HTTP client.
 //
@@ -20,11 +22,11 @@ import (
 type Service struct {
 	bus       *events.Bus
 	router    *LaneRouter
-	client    *kalshi_http.Client
+	client    OrderPlacer
 	gameStore *store.GameStateStore
 }
 
-func NewService(bus *events.Bus, router *LaneRouter, client *kalshi_http.Client, gameStore *store.GameStateStore) *Service {
+func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameStore *store.GameStateStore) *Service {
 	s := &Service{
 		bus:       bus,
 		router:    router,

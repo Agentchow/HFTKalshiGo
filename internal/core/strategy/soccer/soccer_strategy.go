@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
+	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
@@ -19,20 +19,26 @@ const (
 	edgeThreshold    = 3.0 // percentage points
 )
 
+// PregameOddsProvider abstracts fetching pregame odds.
+// Satisfied by *goalserve_http.PregameClient.
+type PregameOddsProvider interface {
+	FetchSoccerPregame() ([]odds.PregameOdds, error)
+}
+
 // Strategy implements soccer-specific 3-way (1X2) trading logic.
 type Strategy struct {
 	scoreDropConfirmSec int
 	lastPendingLog      time.Time
 
-	pregame        *goalserve_http.PregameClient
+	pregame        PregameOddsProvider
 	pregameMu      sync.RWMutex
-	pregameCache   []goalserve_http.PregameOdds
+	pregameCache   []odds.PregameOdds
 	pregameFetch   time.Time
 	pregameLastTry time.Time
 	pregameApplied sync.Map
 }
 
-func NewStrategy(scoreDropConfirmSec int, pregame *goalserve_http.PregameClient) *Strategy {
+func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy {
 	s := &Strategy{
 		scoreDropConfirmSec: scoreDropConfirmSec,
 		pregame:             pregame,
@@ -56,9 +62,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
 			if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
 				s.pregameApplied.Store(gc.EID, true)
-				if gc.DisplayedLive {
-					displayEvents = append(displayEvents, "LIVE")
-				}
+				displayEvents = append(displayEvents, "LIVE")
 			}
 		}
 	}
@@ -115,7 +119,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 		ss.UpdateRedCards(sc.HomeRedCards, sc.AwayRedCards)
 	}
 
-	if (ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC) && gc.DisplayedLive {
+	if ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC {
 		displayEvents = append(displayEvents, "RED-CARD")
 	}
 
@@ -219,14 +223,14 @@ func (s *Strategy) refreshPregameCache() {
 	s.pregameLastTry = time.Now()
 	s.pregameMu.Unlock()
 
-	odds, err := s.pregame.FetchSoccerPregame()
+	fetched, err := s.pregame.FetchSoccerPregame()
 	if err != nil {
 		telemetry.Warnf("pregame: fetch failed: %v", err)
 		return
 	}
 
 	s.pregameMu.Lock()
-	s.pregameCache = odds
+	s.pregameCache = fetched
 	s.pregameFetch = time.Now()
 	s.pregameMu.Unlock()
 }

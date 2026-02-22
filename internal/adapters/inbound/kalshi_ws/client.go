@@ -3,6 +3,7 @@ package kalshi_ws
 import (
 	"context"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -14,6 +15,9 @@ import (
 
 // Client connects to the Kalshi WebSocket feed and publishes
 // MarketEvent updates onto the event bus.
+//
+// Gorilla/websocket supports one concurrent reader and one concurrent
+// writer, so all writes are serialized through mu.
 type Client struct {
 	url    string
 	signer *kalshi_auth.Signer
@@ -21,21 +25,19 @@ type Client struct {
 	conn   *websocket.Conn
 	done   chan struct{}
 
-	// Tickers to subscribe to on connect (set via SetTickers before Connect).
-	tickers []string
+	mu      sync.Mutex
+	tickers map[string]bool
+	subID   int
 }
 
 func NewClient(wsURL string, signer *kalshi_auth.Signer, bus *events.Bus) *Client {
 	return &Client{
-		url:    wsURL,
-		signer: signer,
-		bus:    bus,
-		done:   make(chan struct{}),
+		url:     wsURL,
+		signer:  signer,
+		bus:     bus,
+		done:    make(chan struct{}),
+		tickers: make(map[string]bool),
 	}
-}
-
-func (c *Client) SetTickers(tickers []string) {
-	c.tickers = tickers
 }
 
 func (c *Client) Connect(ctx context.Context) error {
@@ -58,8 +60,33 @@ func (c *Client) dial(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	c.mu.Lock()
 	c.conn = conn
+	c.mu.Unlock()
 	return nil
+}
+
+// SubscribeTickers adds tickers and subscribes on the live connection.
+// Safe to call from any goroutine at any time. If the connection is not
+// yet established the tickers are stored and subscribed on connect.
+func (c *Client) SubscribeTickers(tickers []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var newTickers []string
+	for _, t := range tickers {
+		if !c.tickers[t] {
+			c.tickers[t] = true
+			newTickers = append(newTickers, t)
+		}
+	}
+
+	if len(newTickers) == 0 || c.conn == nil {
+		return nil
+	}
+
+	return c.sendSubscribe(newTickers)
 }
 
 // runLoop reads messages and reconnects on failure with exponential backoff.
@@ -75,9 +102,9 @@ func (c *Client) runLoop(ctx context.Context) {
 			telemetry.Infof("Kalshi WS reconnected")
 		}
 
+		c.resubscribeAll()
 		c.publishWSStatus(true)
 		c.readLoop(ctx)
-
 		c.publishWSStatus(false)
 
 		select {
@@ -108,8 +135,60 @@ func (c *Client) runLoop(ctx context.Context) {
 	}
 }
 
+// resubscribeAll sends a subscribe for every known ticker.
+// Called after each successful connection/reconnection.
+func (c *Client) resubscribeAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.tickers) == 0 {
+		return
+	}
+
+	all := make([]string, 0, len(c.tickers))
+	for t := range c.tickers {
+		all = append(all, t)
+	}
+
+	if err := c.sendSubscribe(all); err != nil {
+		telemetry.Warnf("Kalshi WS resubscribe failed: %v", err)
+	}
+}
+
+// sendSubscribe writes a subscribe command. Caller must hold mu.
+func (c *Client) sendSubscribe(tickers []string) error {
+	c.subID++
+	cmd := subscribeCmd{
+		ID:  c.subID,
+		Cmd: "subscribe",
+		Params: subscribeParams{
+			Channels:            []string{"ticker"},
+			MarketTickers:       tickers,
+			SendInitialSnapshot: true,
+		},
+	}
+	telemetry.Debugf("kalshi_ws: subscribing to %d tickers (sid=%d)", len(tickers), c.subID)
+	return c.conn.WriteJSON(cmd)
+}
+
+type subscribeCmd struct {
+	ID     int             `json:"id"`
+	Cmd    string          `json:"cmd"`
+	Params subscribeParams `json:"params"`
+}
+
+type subscribeParams struct {
+	Channels            []string `json:"channels"`
+	MarketTickers       []string `json:"market_tickers,omitempty"`
+	SendInitialSnapshot bool     `json:"send_initial_snapshot,omitempty"`
+}
+
 func (c *Client) readLoop(ctx context.Context) {
-	defer c.conn.Close()
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	defer conn.Close()
 
 	for {
 		select {
@@ -118,8 +197,8 @@ func (c *Client) readLoop(ctx context.Context) {
 		default:
 		}
 
-		c.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-		_, msg, err := c.conn.ReadMessage()
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			telemetry.Warnf("Kalshi WS read error: %v", err)
 			return
@@ -140,8 +219,11 @@ func (c *Client) publishWSStatus(connected bool) {
 }
 
 func (c *Client) Close() error {
-	if c.conn != nil {
-		return c.conn.Close()
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn != nil {
+		return conn.Close()
 	}
 	return nil
 }

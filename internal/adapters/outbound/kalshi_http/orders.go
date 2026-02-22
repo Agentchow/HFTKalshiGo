@@ -76,6 +76,8 @@ type Market struct {
 	Volume                  int64  `json:"volume"`
 	YesAsk                  int    `json:"yes_ask"`
 	YesBid                  int    `json:"yes_bid"`
+	NoAsk                   int    `json:"no_ask"`
+	NoBid                   int    `json:"no_bid"`
 	MutuallyExclusive       bool   `json:"mutually_exclusive"`
 }
 

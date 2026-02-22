@@ -1,12 +1,12 @@
 package goalserve_webhook
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/events"
@@ -55,15 +55,23 @@ func (h *Handler) handle(sport events.Sport) http.HandlerFunc {
 		start := time.Now()
 		telemetry.Metrics.WebhooksReceived.Inc()
 
-		body, err := h.readBody(r)
-		if err != nil {
+		raw, err := io.ReadAll(r.Body)
+		r.Body.Close()
+		if err != nil || len(raw) == 0 {
 			telemetry.Metrics.WebhookParseErrors.Inc()
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		if h.store != nil {
-			h.store.Insert(sport, body)
+			h.store.Insert(sport, raw)
+		}
+
+		body, err := decompress(raw)
+		if err != nil {
+			telemetry.Metrics.WebhookParseErrors.Inc()
+			w.WriteHeader(http.StatusOK)
+			return
 		}
 
 		// Respond immediately — GoalServe doesn't use the response.
@@ -97,47 +105,21 @@ func (h *Handler) handle(sport events.Sport) http.HandlerFunc {
 	}
 }
 
-// readBody handles gzip-compressed and plain payloads.
-// GoalServe sends gzip when Content-Encoding is set, but also sometimes
-// sends raw gzip bytes without the header — detected by magic bytes.
-func (h *Handler) readBody(r *http.Request) ([]byte, error) {
-	var reader io.Reader = r.Body
-	defer r.Body.Close()
-
-	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
-		gz, err := gzip.NewReader(r.Body)
+// decompress inflates gzip payloads (detected by magic bytes) for JSON parsing.
+// Raw bytes are already persisted compressed by the Store before this is called.
+func decompress(raw []byte) ([]byte, error) {
+	if len(raw) < 2 {
+		return raw, nil
+	}
+	if raw[0] == 0x1f && raw[1] == 0x8b {
+		gz, err := gzip.NewReader(bytes.NewReader(raw))
 		if err != nil {
-			return nil, fmt.Errorf("gzip header: %w", err)
+			return nil, fmt.Errorf("gzip: %w", err)
 		}
 		defer gz.Close()
-		reader = gz
-	} else {
-		// Peek first two bytes for gzip magic (0x1f 0x8b)
-		buf := make([]byte, 2)
-		n, err := io.ReadFull(r.Body, buf)
-		if err != nil && n == 0 {
-			return nil, fmt.Errorf("empty body")
-		}
-		if n >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
-			combined := io.MultiReader(
-				strings.NewReader(string(buf[:n])),
-				r.Body,
-			)
-			gz, err := gzip.NewReader(combined)
-			if err != nil {
-				return nil, fmt.Errorf("gzip magic: %w", err)
-			}
-			defer gz.Close()
-			reader = gz
-		} else {
-			reader = io.MultiReader(
-				strings.NewReader(string(buf[:n])),
-				r.Body,
-			)
-		}
+		return io.ReadAll(gz)
 	}
-
-	return io.ReadAll(reader)
+	return raw, nil
 }
 
 func (h *Handler) healthCheck(w http.ResponseWriter, _ *http.Request) {

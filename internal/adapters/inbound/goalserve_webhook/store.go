@@ -20,8 +20,8 @@ const (
 	vacuumInterval         = 100 // run incremental vacuum every N evictions
 )
 
-// Store persists raw decompressed webhook payloads in a FIFO SQLite database
-// capped at ~1 GiB. Oldest rows are evicted when the budget is exceeded.
+// Store persists raw gzip-compressed webhook payloads in a FIFO SQLite database
+// capped at ~1 GiB of compressed data. Oldest rows are evicted when the budget is exceeded.
 type Store struct {
 	db           *sql.DB
 	mu           sync.Mutex
@@ -48,7 +48,7 @@ func OpenStore(path string) (*Store, error) {
 			sport     TEXT    NOT NULL,
 			received  TEXT    NOT NULL,
 			byte_size INTEGER NOT NULL,
-			raw_json  BLOB    NOT NULL
+			raw_gz    BLOB    NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_wp_received ON webhook_payloads(received)`,
 	} {
@@ -70,29 +70,29 @@ func OpenStore(path string) (*Store, error) {
 	return &Store{db: db, cachedSize: size}, nil
 }
 
-// Insert stores a raw decompressed payload asynchronously.
-func (s *Store) Insert(sport events.Sport, body []byte) {
-	bodyLen := int64(len(body))
-	bodyCopy := make([]byte, bodyLen)
-	copy(bodyCopy, body)
+// Insert stores a raw gzip-compressed payload asynchronously.
+func (s *Store) Insert(sport events.Sport, raw []byte) {
+	rawLen := int64(len(raw))
+	rawCopy := make([]byte, rawLen)
+	copy(rawCopy, raw)
 
 	go func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
 		_, err := s.db.Exec(
-			`INSERT INTO webhook_payloads (sport, received, byte_size, raw_json) VALUES (?, ?, ?, ?)`,
+			`INSERT INTO webhook_payloads (sport, received, byte_size, raw_gz) VALUES (?, ?, ?, ?)`,
 			string(sport),
 			time.Now().UTC().Format(time.RFC3339Nano),
-			bodyLen,
-			bodyCopy,
+			rawLen,
+			rawCopy,
 		)
 		if err != nil {
 			telemetry.Warnf("webhook store: insert failed: %v", err)
 			return
 		}
 
-		s.cachedSize += bodyLen
+		s.cachedSize += rawLen
 		if s.cachedSize > maxStoreBytes {
 			s.evict()
 		}
@@ -105,9 +105,12 @@ func (s *Store) evict() {
 	for s.cachedSize > maxStoreBytes {
 		var freed int64
 		err := s.db.QueryRow(
-			`DELETE FROM webhook_payloads
-			 WHERE id IN (SELECT id FROM webhook_payloads ORDER BY id ASC LIMIT ?)
-			 RETURNING COALESCE(SUM(byte_size), 0)`,
+			`WITH deleted AS (
+				DELETE FROM webhook_payloads
+				WHERE id IN (SELECT id FROM webhook_payloads ORDER BY id ASC LIMIT ?)
+				RETURNING byte_size
+			)
+			SELECT COALESCE(SUM(byte_size), 0) FROM deleted`,
 			evictBatchSize,
 		).Scan(&freed)
 		if err != nil || freed == 0 {

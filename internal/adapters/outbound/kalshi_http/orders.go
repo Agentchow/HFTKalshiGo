@@ -10,14 +10,14 @@ import (
 
 // CreateOrderRequest is the payload for POST /trade-api/v2/portfolio/orders.
 type CreateOrderRequest struct {
-	Ticker    string `json:"ticker"`
-	Action    string `json:"action"`          // "buy" or "sell"
-	Side      string `json:"side"`            // "yes" or "no"
-	Type      string `json:"type"`            // "limit" or "market"
-	Count     int    `json:"count"`
-	YesPrice  int    `json:"yes_price,omitempty"`
-	NoPrice   int    `json:"no_price,omitempty"`
-	ClientID  string `json:"client_order_id,omitempty"`
+	Ticker   string `json:"ticker"`
+	Action   string `json:"action"` // "buy" or "sell"
+	Side     string `json:"side"`   // "yes" or "no"
+	Type     string `json:"type"`   // "limit" or "market"
+	Count    int    `json:"count"`
+	YesPrice int    `json:"yes_price,omitempty"`
+	NoPrice  int    `json:"no_price,omitempty"`
+	ClientID string `json:"client_order_id,omitempty"`
 }
 
 type CreateOrderResponse struct {
@@ -64,21 +64,19 @@ func (c *Client) CancelOrder(ctx context.Context, orderID string) error {
 
 // Market represents a single Kalshi market from the API.
 type Market struct {
-	Ticker                  string `json:"ticker"`
-	EventTicker             string `json:"event_ticker"`
-	Title                   string `json:"title"`
-	Subtitle                string `json:"subtitle"`
-	YesSubTitle             string `json:"yes_sub_title"`
-	NoSubTitle              string `json:"no_sub_title"`
-	Status                  string `json:"status"`
-	ExpectedExpirationTime  string `json:"expected_expiration_time"`
-	CloseTime               string `json:"close_time"`
-	Volume                  int64  `json:"volume"`
-	YesAsk                  int    `json:"yes_ask"`
-	YesBid                  int    `json:"yes_bid"`
-	NoAsk                   int    `json:"no_ask"`
-	NoBid                   int    `json:"no_bid"`
-	MutuallyExclusive       bool   `json:"mutually_exclusive"`
+	Ticker                 string `json:"ticker"`
+	EventTicker            string `json:"event_ticker"`
+	Title                  string `json:"title"`
+	Subtitle               string `json:"subtitle"`
+	YesSubTitle            string `json:"yes_sub_title"`
+	NoSubTitle             string `json:"no_sub_title"`
+	Status                 string `json:"status"`
+	ExpectedExpirationTime string `json:"expected_expiration_time"`
+	CloseTime              string `json:"close_time"`
+	Volume                 int64  `json:"volume"`
+	YesAsk                 int    `json:"yes_ask"`
+	YesBid                 int    `json:"yes_bid"`
+	MutuallyExclusive      bool   `json:"mutually_exclusive"`
 }
 
 type GetMarketsResponse struct {
@@ -116,10 +114,10 @@ func (c *Client) GetMarkets(ctx context.Context, seriesTicker string) ([]Market,
 
 type PositionResponse struct {
 	MarketPositions []struct {
-		Ticker          string `json:"ticker"`
-		Position        int    `json:"position"`
-		MarketExposure  int    `json:"market_exposure"`
-		RealizedPnl     int    `json:"realized_pnl"`
+		Ticker         string `json:"ticker"`
+		Position       int    `json:"position"`
+		MarketExposure int    `json:"market_exposure"`
+		RealizedPnl    int    `json:"realized_pnl"`
 	} `json:"market_positions"`
 }
 

@@ -160,6 +160,24 @@ func (e *Engine) onMarketData(evt events.Event) error {
 		return nil
 	}
 
+	noAsk := me.NoAsk
+	noBid := me.NoBid
+	if noAsk == 0 {
+		noAsk = 100
+	}
+	if noBid == 0 {
+		noBid = 100
+	}
+
+	td := &game.TickerData{
+		Ticker: me.Ticker,
+		YesAsk: me.YesAsk,
+		YesBid: me.YesBid,
+		NoAsk:  noAsk,
+		NoBid:  noBid,
+		Volume: me.Volume,
+	}
+
 	targets := e.store.ByTicker(me.Ticker)
 	if len(targets) == 0 {
 		return nil
@@ -168,24 +186,6 @@ func (e *Engine) onMarketData(evt events.Event) error {
 	for _, gc := range targets {
 		gc.Send(func() {
 			gc.KalshiConnected = true
-
-			existing, hasExisting := gc.Tickers[me.Ticker]
-			td := &game.TickerData{
-				Ticker: me.Ticker,
-				YesAsk: me.YesAsk,
-				YesBid: me.YesBid,
-				NoAsk:  me.NoAsk,
-				NoBid:  me.NoBid,
-				Volume: me.Volume,
-			}
-			if hasExisting {
-				if td.NoAsk == 0 {
-					td.NoAsk = existing.NoAsk
-				}
-				if td.NoBid == 0 {
-					td.NoBid = existing.NoBid
-				}
-			}
 			gc.UpdateTicker(td)
 
 			ds := e.display.Get(gc.EID)
@@ -324,12 +324,16 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
 
 		for _, t := range allTickers {
-			td := &game.TickerData{Ticker: t}
+			td := &game.TickerData{Ticker: t, NoAsk: 100, NoBid: 100}
 			if snap, ok := resolved.Prices[t]; ok {
 				td.YesAsk = float64(snap.YesAsk)
 				td.YesBid = float64(snap.YesBid)
-				td.NoAsk = float64(snap.NoAsk)
-				td.NoBid = float64(snap.NoBid)
+				if snap.YesBid > 0 {
+					td.NoAsk = float64(100 - snap.YesBid)
+				}
+				if snap.YesAsk > 0 {
+					td.NoBid = float64(100 - snap.YesAsk)
+				}
 				td.Volume = snap.Volume
 			}
 			gc.Tickers[t] = td

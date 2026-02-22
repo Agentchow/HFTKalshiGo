@@ -43,14 +43,14 @@ var defaultSeriesTickers = map[events.Sport][]string{
 // kalshi.com/markets/{series}/{slug}/{event}. Zero extra API calls.
 var seriesSlugs = map[string]string{
 	// Hockey
-	"KXNHLGAME":    "nhl-game",
-	"KXAHLGAME":    "ahl-game",
-	"KXKHLGAME":    "khl-game",
-	"KXSHLGAME":    "shl-game",
-	"KXLIIGAGAME":  "liiga-game",
-	"KXELHGAME":    "elh-game",
-	"KXWOMHOCKEY":  "winter-olympics-mens-hockey",
-	"KXWOWHOCKEY":  "winter-olympics-womens-hockey",
+	"KXNHLGAME":   "nhl-game",
+	"KXAHLGAME":   "ahl-game",
+	"KXKHLGAME":   "khl-game",
+	"KXSHLGAME":   "shl-game",
+	"KXLIIGAGAME": "liiga-game",
+	"KXELHGAME":   "elh-game",
+	"KXWOMHOCKEY": "winter-olympics-mens-hockey",
+	"KXWOWHOCKEY": "winter-olympics-womens-hockey",
 	// Soccer
 	"KXEPLGAME":             "english-premier-league-game",
 	"KXUCLGAME":             "uefa-champions-league-game",
@@ -159,8 +159,6 @@ type ResolvedTickers struct {
 type TickerSnapshot struct {
 	YesAsk int
 	YesBid int
-	NoAsk  int
-	NoBid  int
 	Volume int64
 }
 
@@ -362,7 +360,7 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 		} else if fuzzyContains(yesTeam, awayNorm) {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 	}
 	return result
 }
@@ -484,12 +482,12 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 		} else {
 			result.AwayTicker = m.Ticker
 		}
-		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 	}
 	if best.drawTicker != "" {
 		for _, m := range byEvent[best.teamMarkets[0].EventTicker] {
 			if m.Ticker == best.drawTicker {
-				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, NoAsk: m.NoAsk, NoBid: m.NoBid, Volume: m.Volume}
+				result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.YesAsk, YesBid: m.YesBid, Volume: m.Volume}
 				break
 			}
 		}

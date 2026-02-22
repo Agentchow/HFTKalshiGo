@@ -159,3 +159,8 @@ func (h *HockeyState) MarkOrdered(side string) {
 func (h *HockeyState) ClearOrdered() {
 	h.orderedSides = make(map[scoreKey]bool)
 }
+
+func (h *HockeyState) SetTickers(home, away, _ string) {
+	h.HomeTicker = home
+	h.AwayTicker = away
+}

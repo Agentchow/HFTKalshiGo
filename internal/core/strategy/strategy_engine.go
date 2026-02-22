@@ -1,8 +1,12 @@
 package strategy
 
 import (
+	"context"
+	"time"
+
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
+	"github.com/charleschow/hft-trading/internal/core/ticker"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -15,13 +19,15 @@ type Engine struct {
 	bus      *events.Bus
 	store    *store.GameStateStore
 	registry *Registry
+	resolver *ticker.Resolver
 }
 
-func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry) *Engine {
+func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver) *Engine {
 	e := &Engine{
 		bus:      bus,
 		store:    gameStore,
 		registry: registry,
+		resolver: resolver,
 	}
 
 	bus.Subscribe(events.EventScoreChange, e.onScoreChange)
@@ -39,7 +45,11 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 
 	gc, exists := e.store.Get(sc.Sport, sc.EID)
 	if !exists {
-		gc = e.createGameContext(sc)
+		gameStart := evt.Timestamp
+		if sc.GameStartUTC > 0 {
+			gameStart = time.Unix(sc.GameStartUTC, 0)
+		}
+		gc = e.createGameContext(sc, gameStart)
 		e.store.Put(gc)
 		telemetry.Metrics.ActiveGames.Inc()
 	}
@@ -116,29 +126,56 @@ func (e *Engine) onMarketData(evt events.Event) error {
 		return nil
 	}
 
+	td := &game.TickerData{
+		Ticker: me.Ticker,
+		YesAsk: me.YesAsk,
+		YesBid: me.YesBid,
+		NoAsk:  me.NoAsk,
+		NoBid:  me.NoBid,
+		Volume: me.Volume,
+	}
+
 	for _, gc := range e.store.All() {
-		// Check if this game has the ticker registered.
-		// Tickers map is only written on the game's goroutine, but
-		// we only read the key set here — safe because keys are set
-		// once at creation and never deleted during the game's lifetime.
-		if _, exists := gc.Tickers[me.Ticker]; exists {
-			gc.Send(func() {
-				gc.UpdateTicker(&game.TickerData{
-					Ticker: me.Ticker,
-					YesAsk: me.YesAsk,
-					YesBid: me.YesBid,
-					NoAsk:  me.NoAsk,
-					NoBid:  me.NoBid,
-					Volume: me.Volume,
-				})
-			})
-			return nil
-		}
+		// Tickers are seeded asynchronously by the resolver, so
+		// we forward every update to the game goroutine and let it
+		// check ownership there (race-free).
+		gc.Send(func() {
+			if _, exists := gc.Tickers[me.Ticker]; exists {
+				gc.UpdateTicker(td)
+			}
+		})
 	}
 	return nil
 }
 
-func (e *Engine) createGameContext(sc events.ScoreChangeEvent) *game.GameContext {
+func (e *Engine) createGameContext(sc events.ScoreChangeEvent, gameStartedAt time.Time) *game.GameContext {
 	gs := e.registry.CreateGameState(sc.Sport, sc.EID, sc.League, sc.HomeTeam, sc.AwayTeam)
-	return game.NewGameContext(sc.Sport, sc.League, sc.EID, gs)
+	gc := game.NewGameContext(sc.Sport, sc.League, sc.EID, gs)
+
+	if e.resolver != nil {
+		go e.resolveTickers(gc, sc, gameStartedAt)
+	}
+
+	return gc
+}
+
+// resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
+func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent, gameStartedAt time.Time) {
+	resolved := e.resolver.Resolve(context.Background(), sc.Sport, sc.HomeTeam, sc.AwayTeam, gameStartedAt)
+	if resolved == nil {
+		telemetry.Debugf("ticker: no match for %s %s vs %s", sc.Sport, sc.HomeTeam, sc.AwayTeam)
+		return
+	}
+
+	gc.Send(func() {
+		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
+
+		for _, t := range resolved.AllTickers() {
+			gc.Tickers[t] = &game.TickerData{Ticker: t}
+		}
+
+		telemetry.Infof("ticker: resolved %s %s vs %s -> home=%s away=%s draw=%s",
+			sc.Sport, sc.HomeTeam, sc.AwayTeam,
+			resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
+	})
 }

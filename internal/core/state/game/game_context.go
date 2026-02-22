@@ -64,6 +64,7 @@ type GameState interface {
 	CheckScoreDrop(homeScore, awayScore int, confirmSec int) string
 	ClearScoreDropPending()
 	IsScoreDropPending() bool
+	SetTickers(home, away, draw string)
 }
 
 func NewGameContext(sport events.Sport, league, eid string, gs GameState) *GameContext {

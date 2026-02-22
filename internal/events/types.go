@@ -13,6 +13,10 @@ type ScoreChangeEvent struct {
 	TimeLeft  float64
 	Overturn  bool // true if this score was confirmed after a drop
 
+	// Scheduled kick-off / puck-drop from GoalServe (Unix UTC seconds).
+	// Zero when GoalServe doesn't provide it (some hockey feeds).
+	GameStartUTC int64
+
 	// Webhook odds (Pinnacle-implied), nil if unavailable.
 	HomeWinPct *float64
 	DrawPct    *float64 // soccer only

@@ -224,3 +224,9 @@ func isHalfPostRegulation(half string) bool {
 }
 
 func intPtr(v int) *int { return &v }
+
+func (s *SoccerState) SetTickers(home, away, draw string) {
+	s.HomeTicker = home
+	s.AwayTicker = away
+	s.DrawTicker = draw
+}

@@ -62,6 +62,56 @@ func (c *Client) CancelOrder(ctx context.Context, orderID string) error {
 	return nil
 }
 
+// Market represents a single Kalshi market from the API.
+type Market struct {
+	Ticker                  string `json:"ticker"`
+	EventTicker             string `json:"event_ticker"`
+	Title                   string `json:"title"`
+	Subtitle                string `json:"subtitle"`
+	YesSubTitle             string `json:"yes_sub_title"`
+	NoSubTitle              string `json:"no_sub_title"`
+	Status                  string `json:"status"`
+	ExpectedExpirationTime  string `json:"expected_expiration_time"`
+	CloseTime               string `json:"close_time"`
+	Volume                  int64  `json:"volume"`
+	YesAsk                  int    `json:"yes_ask"`
+	YesBid                  int    `json:"yes_bid"`
+	MutuallyExclusive       bool   `json:"mutually_exclusive"`
+}
+
+type GetMarketsResponse struct {
+	Markets []Market `json:"markets"`
+	Cursor  string   `json:"cursor"`
+}
+
+func (c *Client) GetMarkets(ctx context.Context, seriesTicker string) ([]Market, error) {
+	var all []Market
+	cursor := ""
+	for {
+		path := fmt.Sprintf("/trade-api/v2/markets?status=open&series_ticker=%s&limit=1000", seriesTicker)
+		if cursor != "" {
+			path += "&cursor=" + cursor
+		}
+		body, status, err := c.Get(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+		if status != 200 {
+			return nil, fmt.Errorf("get markets: status=%d body=%s", status, string(body))
+		}
+		var resp GetMarketsResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, fmt.Errorf("unmarshal markets: %w", err)
+		}
+		all = append(all, resp.Markets...)
+		if resp.Cursor == "" || len(resp.Markets) == 0 {
+			break
+		}
+		cursor = resp.Cursor
+	}
+	return all, nil
+}
+
 type PositionResponse struct {
 	MarketPositions []struct {
 		Ticker          string `json:"ticker"`

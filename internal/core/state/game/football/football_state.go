@@ -138,3 +138,8 @@ func (f *FootballState) ClearScoreDropPending() {
 }
 
 func (f *FootballState) IsScoreDropPending() bool { return f.scoreDropPending }
+
+func (f *FootballState) SetTickers(home, away, _ string) {
+	f.HomeTicker = home
+	f.AwayTicker = away
+}

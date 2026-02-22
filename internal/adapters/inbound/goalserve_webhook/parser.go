@@ -32,14 +32,17 @@ type WebhookEvent struct {
 }
 
 type EventInfo struct {
-	Name     string `json:"name"`
-	Period   string `json:"period"`
-	Status   string `json:"status"`
-	Timer    string `json:"timer"`
-	Seconds  string `json:"seconds"`
-	League   string `json:"league"`
-	Category string `json:"category"`
-	Events   []any  `json:"events"`
+	Name       string `json:"name"`
+	Period     string `json:"period"`
+	Status     string `json:"status"`
+	Timer      string `json:"timer"`
+	Seconds    string `json:"seconds"`
+	League     string `json:"league"`
+	Category   string `json:"category"`
+	Events     []any  `json:"events"`
+	StartTsUTC string `json:"start_ts_utc"`
+	StartTime  string `json:"start_time"`
+	StartDate  string `json:"start_date"`
 }
 
 type TeamInfo struct {
@@ -124,15 +127,16 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 		}
 
 		scoreEvt := events.ScoreChangeEvent{
-			EID:       eid,
-			Sport:     p.sport,
-			League:    league,
-			HomeTeam:  strings.TrimSpace(ev.TeamInfo.Home.Name),
-			AwayTeam:  strings.TrimSpace(ev.TeamInfo.Away.Name),
-			HomeScore: homeScore,
-			AwayScore: awayScore,
-			Period:    period,
-			TimeLeft:  p.estimateTimeRemaining(period),
+			EID:          eid,
+			Sport:        p.sport,
+			League:       league,
+			HomeTeam:     strings.TrimSpace(ev.TeamInfo.Home.Name),
+			AwayTeam:     strings.TrimSpace(ev.TeamInfo.Away.Name),
+			HomeScore:    homeScore,
+			AwayScore:    awayScore,
+			Period:       period,
+			TimeLeft:     p.estimateTimeRemaining(period),
+			GameStartUTC: parseStartTsUTC(ev.Info.StartTsUTC),
 		}
 		if odds != nil {
 			scoreEvt.HomeWinPct = odds.HomeWinPct
@@ -367,6 +371,21 @@ func removeVig3(a, b, c float64) (float64, float64, float64) {
 	rawC := 1.0 / c
 	total := rawA + rawB + rawC
 	return rawA / total, rawB / total, rawC / total
+}
+
+func parseStartTsUTC(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
+	}
+	if v > 1e12 {
+		v /= 1000 // milliseconds → seconds
+	}
+	return v
 }
 
 func containsAny(s string, substrs []string) bool {

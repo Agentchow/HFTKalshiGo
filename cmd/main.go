@@ -24,6 +24,7 @@ import (
 	footballStrat "github.com/charleschow/hft-trading/internal/core/strategy/football"
 	hockeyStrat "github.com/charleschow/hft-trading/internal/core/strategy/hockey"
 	soccerStrat "github.com/charleschow/hft-trading/internal/core/strategy/soccer"
+	"github.com/charleschow/hft-trading/internal/core/ticker"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -43,19 +44,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Strategies ──────────────────────────────────────────────
-	registry := strategy.NewRegistry()
-	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
-	_ = strategy.NewEngine(bus, gameStore, registry)
-
-	// ── Execution lanes ─────────────────────────────────────────
-	laneRouter := execution.NewLaneRouter()
-	registerSportLanes(laneRouter, riskLimits, events.SportHockey, "hockey")
-	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
-	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
-
 	// ── Kalshi auth + clients ───────────────────────────────────
 	kalshiSigner, err := kalshi_auth.NewSignerFromFile(cfg.KalshiKeyID, cfg.KalshiKeyFile)
 	if err != nil {
@@ -69,6 +57,22 @@ func main() {
 	telemetry.Infof("Kalshi connected  mode=%s  api=%s", cfg.KalshiMode, cfg.KalshiBaseURL)
 
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner)
+
+	// ── Ticker resolver ────────────────────────────────────────
+	tickerResolver := ticker.NewResolver(kalshiClient)
+
+	// ── Strategies ──────────────────────────────────────────────
+	registry := strategy.NewRegistry()
+	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec))
+	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec))
+	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver)
+
+	// ── Execution lanes ─────────────────────────────────────────
+	laneRouter := execution.NewLaneRouter()
+	registerSportLanes(laneRouter, riskLimits, events.SportHockey, "hockey")
+	registerSportLanes(laneRouter, riskLimits, events.SportSoccer, "soccer")
+	registerSportLanes(laneRouter, riskLimits, events.SportFootball, "football")
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
 
 	// ── Webhook payload store ───────────────────────────────────

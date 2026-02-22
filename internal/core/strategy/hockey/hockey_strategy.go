@@ -64,7 +64,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) [
 	// Compute model: Pinnacle first, math model fallback
 	s.computeModel(hs)
 
-	telemetry.Infof("hockey: model %s  %s %.1f%% vs %s %.1f%%  score=%d-%d  period=%s  time=%.0fm  source=%s",
+	telemetry.Debugf("hockey: model %s  %s %.1f%% vs %s %.1f%%  score=%d-%d  period=%s  time=%.0fm  source=%s",
 		sc.EID,
 		hs.GetHomeTeam(), hs.ModelHomePct,
 		hs.GetAwayTeam(), hs.ModelAwayPct,

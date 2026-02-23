@@ -190,6 +190,15 @@ func (c *Client) readLoop(ctx context.Context) {
 
 	defer conn.Close()
 
+	// Kalshi sends pings every 10s; 30s gives 3 missed pings before timeout.
+	const pingWait = 30 * time.Second
+
+	conn.SetReadDeadline(time.Now().Add(pingWait))
+	conn.SetPingHandler(func(appData string) error {
+		conn.SetReadDeadline(time.Now().Add(pingWait))
+		return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(5*time.Second))
+	})
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -197,13 +206,13 @@ func (c *Client) readLoop(ctx context.Context) {
 		default:
 		}
 
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			telemetry.Warnf("Kalshi WS read error: %v", err)
 			return
 		}
 
+		conn.SetReadDeadline(time.Now().Add(pingWait))
 		for _, evt := range ParseMessage(msg) {
 			c.bus.Publish(evt)
 		}

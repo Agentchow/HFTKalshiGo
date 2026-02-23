@@ -61,12 +61,12 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 	}
 
 	me := events.MarketEvent{
-		Ticker: t.MarketTicker,
-		YesAsk: dollarsToCents(t.YesAskDollars),
-		YesBid: dollarsToCents(t.YesBidDollars),
-		NoAsk:  dollarsToCents(t.NoAskDollars),
-		NoBid:  dollarsToCents(t.NoBidDollars),
-		Volume: t.Volume,
+		Ticker:        t.MarketTicker,
+		YesAskDollars: dollarsToCents(t.YesAskDollars),
+		YesBidDollars: dollarsToCents(t.YesBidDollars),
+		NoAskDollars:  dollarsToCents(t.NoAskDollars),
+		NoBidDollars:  dollarsToCents(t.NoBidDollars),
+		Volume:        t.Volume,
 	}
 
 	return []events.Event{{

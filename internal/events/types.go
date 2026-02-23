@@ -29,12 +29,12 @@ type ScoreChangeEvent struct {
 
 // MarketEvent is published when the Kalshi WebSocket reports a price change.
 type MarketEvent struct {
-	Ticker string  `json:"ticker"`
-	YesAsk float64 `json:"yes_ask"`
-	YesBid float64 `json:"yes_bid"`
-	NoAsk  float64 `json:"no_ask"`
-	NoBid  float64 `json:"no_bid"`
-	Volume int64   `json:"volume"`
+	Ticker        string  `json:"ticker"`
+	YesAskDollars float64 `json:"yes_ask_dollars"`
+	YesBidDollars float64 `json:"yes_bid_dollars"`
+	NoAskDollars  float64 `json:"no_ask_dollars"`
+	NoBidDollars  float64 `json:"no_bid_dollars"`
+	Volume        int64   `json:"volume"`
 }
 
 // OrderIntent is published by a strategy when it wants to place an order.

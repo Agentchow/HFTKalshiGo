@@ -3910,7 +3910,6 @@ components:
         - maker_fill_cost
         - taker_fill_cost_dollars
         - maker_fill_cost_dollars
-        - queue_position
       properties:
         order_id:
           type: string
@@ -3977,10 +3976,6 @@ components:
         maker_fill_cost_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
           description: The cost of filled maker orders in dollars
-        queue_position:
-          type: integer
-          description: |-
-            **DEPRECATED**: This field is deprecated and will always return 0. Please use the GET /portfolio/orders/{order_id}/queue_position endpoint instead
         taker_fees_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
           nullable: true
@@ -4164,7 +4159,6 @@ components:
         - market_exposure_dollars
         - realized_pnl
         - realized_pnl_dollars
-        - resting_orders_count
         - fees_paid
         - fees_paid_dollars
       properties:
@@ -4197,10 +4191,6 @@ components:
         realized_pnl_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
           description: Locked in profit and loss, in dollars
-        resting_orders_count:
-          type: integer
-          format: int32
-          description: "[DEPRECATED] Aggregate size of resting orders in contract units"
         fees_paid:
           type: integer
           description: Fees paid on fill orders, in cents
@@ -4288,7 +4278,6 @@ components:
       required:
         - trade_id
         - ticker
-        - price
         - count
         - count_fp
         - yes_price
@@ -4303,9 +4292,6 @@ components:
         ticker:
           type: string
           description: Unique identifier for the market
-        price:
-          type: number
-          description: Trade price (deprecated - use yes_price or no_price)
         count:
           type: integer
           description: Number of contracts bought or sold in this trade
@@ -4423,7 +4409,6 @@ components:
         - action
         - count
         - count_fp
-        - price
         - yes_price
         - no_price
         - yes_price_fixed
@@ -4462,9 +4447,6 @@ components:
         count_fp:
           $ref: '#/components/schemas/FixedPointCount'
           description: String representation of the number of contracts bought or sold in this fill
-        price:
-          type: number
-          description: Fill price (deprecated - use yes_price or no_price)
         yes_price:
           type: integer
           description: Fill price for the yes side in cents
@@ -5077,9 +5059,6 @@ components:
           type: boolean
         reduce_only:
           type: boolean
-        sell_position_floor:
-          type: integer
-          description: "Deprecated: Use reduce_only instead. Only accepts value of 0."
         self_trade_prevention_type:
           allOf:
             - $ref: '#/components/schemas/SelfTradePreventionType'
@@ -5338,10 +5317,7 @@ components:
         - open_date
         - close_date
         - associated_events
-        - associated_event_tickers
         - is_ordered
-        - is_single_market_per_event
-        - is_all_yes
         - size_min
         - size_max
         - functional_description
@@ -5371,20 +5347,9 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedEvent'
           description: List of events with their individual configuration.
-        associated_event_tickers:
-          type: array
-          items:
-            type: string
-          description: '[DEPRECATED - Use associated_events instead] A list of events associated with the collection. Markets in these events can be passed as inputs to the Lookup and Create endpoints.'
         is_ordered:
           type: boolean
           description: Whether the collection is ordered. If true, the order of markets passed into Lookup/Create affects the output. If false, the order does not matter.
-        is_single_market_per_event:
-          type: boolean
-          description: '[DEPRECATED - Use associated_events instead] Whether the collection accepts multiple markets from the same event passed into Lookup/Create.'
-        is_all_yes:
-          type: boolean
-          description: '[DEPRECATED - Use associated_events instead] Whether the collection requires that only the market side of ''yes'' may be used.'
         size_min:
           type: integer
           format: int32
@@ -5655,16 +5620,10 @@ components:
       type: object
       required:
         - event
-        - markets
       properties:
         event:
           $ref: '#/components/schemas/EventData'
           description: Data for the event.
-        markets:
-          type: array
-          description: Data for the markets in this event. This field is deprecated in favour of the "markets" field inside the event. Which will be filled with the same value if you use the query parameter "with_nested_markets=true".
-          items:
-            $ref: '#/components/schemas/Market'
 
     MarketMetadata:
       type: object
@@ -5786,7 +5745,6 @@ components:
         - title
         - collateral_return_type
         - mutually_exclusive
-        - category
         - available_on_brokers
         - product_metadata
       properties:
@@ -5808,9 +5766,6 @@ components:
         mutually_exclusive:
           type: boolean
           description: If true, only one market in this event can resolve to 'yes'. If false, multiple markets can resolve to 'yes'.
-        category:
-          type: string
-          description: Event category (deprecated, use series-level category instead).
         strike_date:
           type: string
           format: date-time
@@ -6040,42 +5995,28 @@ components:
         - ticker
         - event_ticker
         - market_type
-        - title
-        - subtitle
         - yes_sub_title
         - no_sub_title
         - created_time
         - updated_time
         - open_time
         - close_time
-        - expiration_time
         - latest_expiration_time
         - settlement_timer_seconds
         - status
-        - response_price_units
-        - notional_value
         - notional_value_dollars
-        - yes_bid
         - yes_bid_dollars
-        - yes_ask
         - yes_ask_dollars
-        - no_bid
         - no_bid_dollars
-        - no_ask
         - no_ask_dollars
-        - last_price
         - last_price_dollars
-        - previous_yes_bid
         - previous_yes_bid_dollars
-        - previous_yes_ask
         - previous_yes_ask_dollars
-        - previous_price
         - previous_price_dollars
         - volume
         - volume_fp
         - volume_24h
         - volume_24h_fp
-        - liquidity
         - liquidity_dollars
         - open_interest
         - open_interest_fp
@@ -6084,7 +6025,6 @@ components:
         - expiration_value
         - rules_primary
         - rules_secondary
-        - tick_size
         - price_level_structure
         - price_ranges
       properties:
@@ -6096,12 +6036,6 @@ components:
           type: string
           enum: [binary, scalar]
           description: Identifies the type of market
-        title:
-          type: string
-          deprecated: true
-        subtitle:
-          type: string
-          deprecated: true
         yes_sub_title:
           type: string
           description: Shortened title for the yes side of this market
@@ -6127,10 +6061,6 @@ components:
           nullable: true
           x-omitempty: true
           description: Time when this market is expected to expire
-        expiration_time:
-          type: string
-          format: date-time
-          deprecated: true
         latest_expiration_time:
           type: string
           format: date-time

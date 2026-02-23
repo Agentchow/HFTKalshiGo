@@ -543,33 +543,33 @@ func (e *Engine) spawnBackfill(gc *game.GameContext, ss *soccerState.SoccerState
 		gc.Send(func() {
 			odds := training.OddsBackfill{}
 
-			if ss.PinnacleHomePct != nil {
-				v := *ss.PinnacleHomePct / 100.0
-				odds.PinnacleHomePctL = &v
-			}
-			if ss.PinnacleDrawPct != nil {
-				v := *ss.PinnacleDrawPct / 100.0
-				odds.PinnacleDrawPctL = &v
-			}
-			if ss.PinnacleAwayPct != nil {
-				v := *ss.PinnacleAwayPct / 100.0
-				odds.PinnacleAwayPctL = &v
-			}
+		if ss.PinnacleHomePct != nil && *ss.PinnacleHomePct > 0 {
+			v := *ss.PinnacleHomePct / 100.0
+			odds.PinnacleHomePctL = &v
+		}
+		if ss.PinnacleDrawPct != nil && *ss.PinnacleDrawPct > 0 {
+			v := *ss.PinnacleDrawPct / 100.0
+			odds.PinnacleDrawPctL = &v
+		}
+		if ss.PinnacleAwayPct != nil && *ss.PinnacleAwayPct > 0 {
+			v := *ss.PinnacleAwayPct / 100.0
+			odds.PinnacleAwayPctL = &v
+		}
 
-			if gc.KalshiConnected && len(gc.Tickers) > 0 {
-				if td, ok := gc.Tickers[ss.HomeTicker]; ok && td.YesAsk >= 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiHomePctL = &v
-				}
-				if td, ok := gc.Tickers[ss.DrawTicker]; ok && td.YesAsk >= 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiDrawPctL = &v
-				}
-				if td, ok := gc.Tickers[ss.AwayTicker]; ok && td.YesAsk >= 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiAwayPctL = &v
-				}
+		if len(gc.Tickers) > 0 {
+			if td, ok := gc.Tickers[ss.HomeTicker]; ok && td.YesAsk > 0 {
+				v := td.YesAsk / 100.0
+				odds.KalshiHomePctL = &v
 			}
+			if td, ok := gc.Tickers[ss.DrawTicker]; ok && td.YesAsk > 0 {
+				v := td.YesAsk / 100.0
+				odds.KalshiDrawPctL = &v
+			}
+			if td, ok := gc.Tickers[ss.AwayTicker]; ok && td.YesAsk > 0 {
+				v := td.YesAsk / 100.0
+				odds.KalshiAwayPctL = &v
+			}
+		}
 
 			e.soccerTraining.BackfillOdds(rowID, odds)
 		})
@@ -629,25 +629,25 @@ func (e *Engine) spawnHockeyBackfill(gc *game.GameContext, hs *hockeyState.Hocke
 		gc.Send(func() {
 			odds := training.HockeyOddsBackfill{}
 
-			if hs.PinnacleHomePct != nil {
-				v := *hs.PinnacleHomePct / 100.0
-				odds.PinnacleHomePctL = &v
-			}
-			if hs.PinnacleAwayPct != nil {
-				v := *hs.PinnacleAwayPct / 100.0
-				odds.PinnacleAwayPctL = &v
-			}
+		if hs.PinnacleHomePct != nil && *hs.PinnacleHomePct > 0 {
+			v := *hs.PinnacleHomePct / 100.0
+			odds.PinnacleHomePctL = &v
+		}
+		if hs.PinnacleAwayPct != nil && *hs.PinnacleAwayPct > 0 {
+			v := *hs.PinnacleAwayPct / 100.0
+			odds.PinnacleAwayPctL = &v
+		}
 
-			if gc.KalshiConnected && len(gc.Tickers) > 0 {
-				if td, ok := gc.Tickers[hs.HomeTicker]; ok && td.YesAsk >= 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiHomePctL = &v
-				}
-				if td, ok := gc.Tickers[hs.AwayTicker]; ok && td.YesAsk >= 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiAwayPctL = &v
-				}
+		if len(gc.Tickers) > 0 {
+			if td, ok := gc.Tickers[hs.HomeTicker]; ok && td.YesAsk > 0 {
+				v := td.YesAsk / 100.0
+				odds.KalshiHomePctL = &v
 			}
+			if td, ok := gc.Tickers[hs.AwayTicker]; ok && td.YesAsk > 0 {
+				v := td.YesAsk / 100.0
+				odds.KalshiAwayPctL = &v
+			}
+		}
 
 			e.hockeyTraining.BackfillOdds(rowID, odds)
 		})

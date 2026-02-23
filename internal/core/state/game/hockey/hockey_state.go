@@ -61,6 +61,8 @@ func New(eid, league, homeTeam, awayTeam string) *HockeyState {
 		HomeWinPct:   0.5,
 		AwayWinPct:   0.5,
 		TimeLeft:     60,
+		ModelHomePct: 100,
+		ModelAwayPct: 100,
 		orderedSides: make(map[scoreKey]bool),
 	}
 }

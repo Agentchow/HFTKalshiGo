@@ -70,15 +70,18 @@ type tradeScoreKey struct {
 
 func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 	return &SoccerState{
-		EID:           eid,
-		League:        league,
-		HomeTeam:      homeTeam,
-		AwayTeam:      awayTeam,
-		HomeWinPct:    0.40,
-		DrawPct:       0.25,
-		AwayWinPct:    0.35,
-		G0:            2.5,
-		TimeLeft:      90,
+		EID:          eid,
+		League:       league,
+		HomeTeam:     homeTeam,
+		AwayTeam:     awayTeam,
+		HomeWinPct:   0.40,
+		DrawPct:      0.25,
+		AwayWinPct:   0.35,
+		G0:           2.5,
+		TimeLeft:     90,
+		ModelHomeYes: 100,
+		ModelDrawYes: 100,
+		ModelAwayYes: 100,
 		orderedTrades: make(map[tradeScoreKey]bool),
 	}
 }

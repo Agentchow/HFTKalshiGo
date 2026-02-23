@@ -72,10 +72,16 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 	}}
 }
 
+// dollarsToCents converts a dollar-string from the Kalshi WS to cents.
+// Returns -1 when the field is absent or unparseable (partial WS update),
+// so callers can distinguish "not sent" from "genuinely $0.00".
 func dollarsToCents(s string) float64 {
+	if s == "" {
+		return -1
+	}
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return 0
+		return -1
 	}
 	return v * 100
 }

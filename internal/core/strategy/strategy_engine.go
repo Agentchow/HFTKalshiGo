@@ -117,6 +117,12 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 	return nil
 }
 
+// onGameFinish handles the game-over event.
+//
+// NOTE: Kalshi does NOT remove liquidity or settle markets immediately
+// after a game ends. They wait several minutes and let the market
+// participants handle it organically. Ticker prices continue to update
+// via the WS feed after FINAL and should still be tracked.
 func (e *Engine) onGameFinish(evt events.Event) error {
 	gf, ok := evt.Payload.(events.GameFinishEvent)
 	if !ok {
@@ -163,12 +169,9 @@ const edgeDisplayThrottle = 30 * time.Second
 // (e.g. NO ask != 100 - YES bid). Never synthesize or derive prices.
 //
 // The Kalshi WS sends PARTIAL ticker updates — only fields that changed
-// are included. A field missing from a WS message does NOT mean the
-// price is zero; it means nobody moved that side of the book since the
-// last update. We MERGE non-zero values into the existing TickerData
-// to preserve prices from the REST snapshot or earlier WS updates.
-// Replacing the entire TickerData would clobber valid prices with zeros
-// (which then hit the fallback and show 100c).
+// are included. The parser uses -1 as a sentinel for "field not present",
+// so we can distinguish absent fields (keep existing) from genuinely
+// $0.00 (update to 0). Guards use >= 0 to accept zero-priced updates.
 func (e *Engine) onMarketData(evt events.Event) error {
 	me, ok := evt.Payload.(events.MarketEvent)
 	if !ok {
@@ -188,16 +191,16 @@ func (e *Engine) onMarketData(evt events.Event) error {
 				td = &game.TickerData{Ticker: me.Ticker, NoAsk: 100, NoBid: 100}
 				gc.Tickers[me.Ticker] = td
 			}
-			if me.YesAsk > 0 {
+			if me.YesAsk >= 0 {
 				td.YesAsk = me.YesAsk
 			}
-			if me.YesBid > 0 {
+			if me.YesBid >= 0 {
 				td.YesBid = me.YesBid
 			}
-			if me.NoAsk > 0 {
+			if me.NoAsk >= 0 {
 				td.NoAsk = me.NoAsk
 			}
-			if me.NoBid > 0 {
+			if me.NoBid >= 0 {
 				td.NoBid = me.NoBid
 			}
 			if me.Volume > 0 {

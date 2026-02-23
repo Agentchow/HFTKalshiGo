@@ -67,7 +67,7 @@ func New(eid, league, homeTeam, awayTeam string) *HockeyState {
 	}
 }
 
-func (h *HockeyState) GetEID() string           { return h.EID }
+func (h *HockeyState) GetEID() string            { return h.EID }
 func (h *HockeyState) GetHomeTeam() string       { return h.HomeTeam }
 func (h *HockeyState) GetAwayTeam() string       { return h.AwayTeam }
 func (h *HockeyState) GetHomeScore() int         { return h.HomeScore }
@@ -140,7 +140,7 @@ func (h *HockeyState) RecalcEdge(tickers map[string]*game.TickerData) {
 	}
 	h.EdgeHomeYes = edgeFor(h.ModelHomePct, yesAsk(tickers, h.HomeTicker))
 	h.EdgeAwayYes = edgeFor(h.ModelAwayPct, yesAsk(tickers, h.AwayTicker))
-	h.EdgeHomeNo = edgeFor(100-h.ModelHomePct, noAsk(tickers, h.HomeTicker))
+	h.EdgeHomeNo = edgeFor(120-h.ModelHomePct, noAsk(tickers, h.HomeTicker))
 	h.EdgeAwayNo = edgeFor(100-h.ModelAwayPct, noAsk(tickers, h.AwayTicker))
 }
 

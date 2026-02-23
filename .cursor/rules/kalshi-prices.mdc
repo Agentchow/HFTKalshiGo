@@ -5,6 +5,7 @@ alwaysApply: true
 
 # Kalshi Price Rules
 
-- The Kalshi WS ticker channel only sends `yes_bid_dollars` and `no_bid_dollars`. It does NOT send ask fields.
-- Ask prices come from the opposite bid: `yes_ask = 100 - no_bid`, `no_ask = 100 - yes_bid`. This is the Kalshi binary market structure, not a derivation.
+- The Kalshi WS ticker channel sends `yes_bid_dollars` and `yes_ask_dollars`. It does NOT send `no_bid_dollars` or `no_ask_dollars`.
+- For a single market: **YesAsk** is read directly from `yes_ask_dollars`. **NoAsk** = `100 - yes_bid`. These are the only two ask prices we care about.
+- `no_bid = 100 - yes_ask` and `no_ask = 100 - yes_bid`. This is Kalshi binary market structure, not a derivation.
 - The REST API (GetMarkets) returns all four fields directly: `yes_ask_dollars`, `yes_bid_dollars`, `no_ask_dollars`, `no_bid_dollars`.

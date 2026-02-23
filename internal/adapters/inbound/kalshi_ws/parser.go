@@ -19,7 +19,7 @@ type wsMessage struct {
 type tickerMsg struct {
 	MarketTicker  string `json:"market_ticker"`
 	YesBidDollars string `json:"yes_bid_dollars"`
-	NoBidDollars  string `json:"no_bid_dollars"`
+	YesAskDollars string `json:"yes_ask_dollars"`
 	Volume        int64  `json:"volume"`
 }
 
@@ -54,10 +54,10 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 	}
 
 	me := events.MarketEvent{
-		Ticker:    t.MarketTicker,
-		YesBid:   dollarsToCents(t.YesBidDollars),
-		NoBid:    dollarsToCents(t.NoBidDollars),
-		Volume:   t.Volume,
+		Ticker: t.MarketTicker,
+		YesBid: dollarsToCents(t.YesBidDollars),
+		YesAsk: dollarsToCents(t.YesAskDollars),
+		Volume: t.Volume,
 	}
 
 	return []events.Event{{

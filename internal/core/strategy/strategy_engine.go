@@ -178,15 +178,14 @@ const edgeDisplayThrottle = 30 * time.Second
 
 // onMarketData routes Kalshi WS price updates to the correct game.
 //
-// IMPORTANT: Kalshi markets are NOT binary complements. Each outcome
-// (home, away, tie) has its own independent YES and NO order book with
-// real people posting offers. Prices are NOT derivable from each other
-// (e.g. NO ask != 100 - YES bid). Never synthesize or derive prices.
+// The Kalshi WS ticker channel sends yes_bid_dollars and yes_ask_dollars.
+// NO prices are the binary complement: no_ask = 100 - yes_bid,
+// no_bid = 100 - yes_ask (same orders, opposite side of the book).
 //
-// The Kalshi WS sends PARTIAL ticker updates — only fields that changed
-// are included. The parser uses -1 as a sentinel for "field not present",
-// so we can distinguish absent fields (keep existing) from genuinely
-// $0.00 (update to 0). Guards use >= 0 to accept zero-priced updates.
+// The WS sends PARTIAL updates — only fields that changed are included.
+// The parser uses -1 as a sentinel for "field not present", so we can
+// distinguish absent fields (keep existing) from genuinely $0.00.
+// Guards use >= 0 to accept zero-priced updates.
 func (e *Engine) onMarketData(evt events.Event) error {
 	me, ok := evt.Payload.(events.MarketEvent)
 	if !ok {
@@ -210,9 +209,9 @@ func (e *Engine) onMarketData(evt events.Event) error {
 				td.YesBid = me.YesBid
 				td.NoAsk = 100 - me.YesBid
 			}
-			if me.NoBid >= 0 {
-				td.NoBid = me.NoBid
-				td.YesAsk = 100 - me.NoBid
+			if me.YesAsk >= 0 {
+				td.YesAsk = me.YesAsk
+				td.NoBid = 100 - me.YesAsk
 			}
 			if me.Volume > 0 {
 				td.Volume = me.Volume

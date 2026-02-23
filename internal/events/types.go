@@ -28,11 +28,11 @@ type ScoreChangeEvent struct {
 }
 
 // MarketEvent is published when the Kalshi WebSocket reports a price change.
-// The WS ticker channel only sends bid prices (yes_bid_dollars, no_bid_dollars).
+// The WS ticker channel sends yes_bid_dollars and yes_ask_dollars (not no_bid/no_ask).
 type MarketEvent struct {
 	Ticker string  `json:"ticker"`
 	YesBid float64 `json:"yes_bid"`
-	NoBid  float64 `json:"no_bid"`
+	YesAsk float64 `json:"yes_ask"`
 	Volume int64   `json:"volume"`
 }
 

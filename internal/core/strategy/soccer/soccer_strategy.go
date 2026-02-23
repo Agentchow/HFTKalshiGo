@@ -9,6 +9,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
+	"github.com/charleschow/hft-trading/internal/core/ticker"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -51,7 +52,7 @@ func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy
 
 const (
 	startupMaxAttempts = 5
-	startupRetryDelay  = 10 * time.Second
+	startupRetryDelay  = 15 * time.Second
 )
 
 func (s *Strategy) loadPregameWithRetry() {
@@ -204,12 +205,12 @@ func (s *Strategy) applyPregame(ss *soccerState.SoccerState, homeTeam, awayTeam 
 		}
 	}
 
-	homeNorm := strings.ToLower(strings.TrimSpace(homeTeam))
-	awayNorm := strings.ToLower(strings.TrimSpace(awayTeam))
+	homeNorm := ticker.Normalize(homeTeam, ticker.SoccerAliases)
+	awayNorm := ticker.Normalize(awayTeam, ticker.SoccerAliases)
 
 	for _, p := range cached {
-		pHome := strings.ToLower(strings.TrimSpace(p.HomeTeam))
-		pAway := strings.ToLower(strings.TrimSpace(p.AwayTeam))
+		pHome := ticker.Normalize(p.HomeTeam, ticker.SoccerAliases)
+		pAway := ticker.Normalize(p.AwayTeam, ticker.SoccerAliases)
 
 		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
 			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {

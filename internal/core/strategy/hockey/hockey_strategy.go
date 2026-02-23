@@ -10,6 +10,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
+	"github.com/charleschow/hft-trading/internal/core/ticker"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -265,12 +266,12 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 		}
 	}
 
-	homeNorm := strings.ToLower(strings.TrimSpace(homeTeam))
-	awayNorm := strings.ToLower(strings.TrimSpace(awayTeam))
+	homeNorm := ticker.Normalize(homeTeam, ticker.HockeyAliases)
+	awayNorm := ticker.Normalize(awayTeam, ticker.HockeyAliases)
 
 	for _, p := range cached {
-		pHome := strings.ToLower(strings.TrimSpace(p.HomeTeam))
-		pAway := strings.ToLower(strings.TrimSpace(p.AwayTeam))
+		pHome := ticker.Normalize(p.HomeTeam, ticker.HockeyAliases)
+		pAway := ticker.Normalize(p.AwayTeam, ticker.HockeyAliases)
 
 		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
 			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {

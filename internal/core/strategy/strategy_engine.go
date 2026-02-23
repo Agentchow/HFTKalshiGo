@@ -647,6 +647,10 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 			e.store.RegisterTicker(t, gc)
 		}
 
+		if !gc.Game.HasPregame() {
+			return
+		}
+
 		gc.Game.RecalcEdge(gc.Tickers)
 
 		ds := e.display.Get(gc.EID)

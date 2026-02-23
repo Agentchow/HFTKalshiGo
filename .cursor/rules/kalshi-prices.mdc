@@ -5,5 +5,6 @@ alwaysApply: true
 
 # Kalshi Price Rules
 
-- NEVER derive NO prices from YES prices (or vice versa). Always use the raw values received from the Kalshi WebSocket or REST API.
-- YES and NO order books on Kalshi are independent. Do not synthesize, compute, or infer one side from the other.
+- The Kalshi WS ticker channel only sends `yes_bid_dollars` and `no_bid_dollars`. It does NOT send ask fields.
+- Ask prices come from the opposite bid: `yes_ask = 100 - no_bid`, `no_ask = 100 - yes_bid`. This is the Kalshi binary market structure, not a derivation.
+- The REST API (GetMarkets) returns all four fields directly: `yes_ask_dollars`, `yes_bid_dollars`, `no_ask_dollars`, `no_bid_dollars`.

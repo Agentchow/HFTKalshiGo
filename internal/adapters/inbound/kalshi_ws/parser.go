@@ -18,9 +18,7 @@ type wsMessage struct {
 
 type tickerMsg struct {
 	MarketTicker  string `json:"market_ticker"`
-	YesAskDollars string `json:"yes_ask_dollars"`
 	YesBidDollars string `json:"yes_bid_dollars"`
-	NoAskDollars  string `json:"no_ask_dollars"`
 	NoBidDollars  string `json:"no_bid_dollars"`
 	Volume        int64  `json:"volume"`
 }
@@ -55,18 +53,11 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		return nil
 	}
 
-	if t.NoAskDollars != "" || t.NoBidDollars != "" {
-		telemetry.Infof("kalshi_ws DIAG: ticker=%s no_ask_dollars=%q no_bid_dollars=%q raw=%s",
-			t.MarketTicker, t.NoAskDollars, t.NoBidDollars, string(raw))
-	}
-
 	me := events.MarketEvent{
-		Ticker:        t.MarketTicker,
-		YesAskDollars: dollarsToCents(t.YesAskDollars),
-		YesBidDollars: dollarsToCents(t.YesBidDollars),
-		NoAskDollars:  dollarsToCents(t.NoAskDollars),
-		NoBidDollars:  dollarsToCents(t.NoBidDollars),
-		Volume:        t.Volume,
+		Ticker:    t.MarketTicker,
+		YesBid:   dollarsToCents(t.YesBidDollars),
+		NoBid:    dollarsToCents(t.NoBidDollars),
+		Volume:   t.Volume,
 	}
 
 	return []events.Event{{

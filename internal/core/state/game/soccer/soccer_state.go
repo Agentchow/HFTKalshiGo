@@ -71,18 +71,18 @@ type tradeScoreKey struct {
 
 func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 	return &SoccerState{
-		EID:          eid,
-		League:       league,
-		HomeTeam:     homeTeam,
-		AwayTeam:     awayTeam,
-		HomeWinPct:   0.40,
-		DrawPct:      0.25,
-		AwayWinPct:   0.35,
-		G0:           2.5,
-		TimeLeft:     90,
-		ModelHomeYes: 100,
-		ModelDrawYes: 100,
-		ModelAwayYes: 100,
+		EID:           eid,
+		League:        league,
+		HomeTeam:      homeTeam,
+		AwayTeam:      awayTeam,
+		HomeWinPct:    0.40,
+		DrawPct:       0.25,
+		AwayWinPct:    0.35,
+		G0:            2.5,
+		TimeLeft:      90,
+		ModelHomeYes:  100,
+		ModelDrawYes:  100,
+		ModelAwayYes:  100,
 		orderedTrades: make(map[tradeScoreKey]bool),
 	}
 }
@@ -210,7 +210,7 @@ func (s *SoccerState) RecalcEdge(tickers map[string]*game.TickerData) {
 	s.EdgeHomeYes = edgeFor(pinnHome, yesAsk(tickers, s.HomeTicker))
 	s.EdgeDrawYes = edgeFor(pinnDraw, yesAsk(tickers, s.DrawTicker))
 	s.EdgeAwayYes = edgeFor(pinnAway, yesAsk(tickers, s.AwayTicker))
-	s.EdgeHomeNo = edgeFor(100-pinnHome, noAsk(tickers, s.HomeTicker))
+	s.EdgeHomeNo = edgeFor(120-pinnHome, noAsk(tickers, s.HomeTicker))
 	s.EdgeDrawNo = edgeFor(100-pinnDraw, noAsk(tickers, s.DrawTicker))
 	s.EdgeAwayNo = edgeFor(100-pinnAway, noAsk(tickers, s.AwayTicker))
 }

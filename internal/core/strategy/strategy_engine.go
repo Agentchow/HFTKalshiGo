@@ -206,19 +206,14 @@ func (e *Engine) onMarketData(evt events.Event) error {
 				td = &game.TickerData{Ticker: me.Ticker, NoAsk: 100, NoBid: 100}
 				gc.Tickers[me.Ticker] = td
 			}
-			if me.YesAsk >= 0 {
-				td.YesAsk = me.YesAsk
-			}
 			if me.YesBid >= 0 {
 				td.YesBid = me.YesBid
-			}
-			if me.NoAsk >= 0 {
-				td.NoAsk = me.NoAsk
+				td.NoAsk = 100 - me.YesBid
 			}
 			if me.NoBid >= 0 {
 				td.NoBid = me.NoBid
+				td.YesAsk = 100 - me.NoBid
 			}
-			// NEVER derive NO prices — use raw values from Kalshi WS only.
 			if me.Volume > 0 {
 				td.Volume = me.Volume
 			}

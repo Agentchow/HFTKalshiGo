@@ -10,6 +10,7 @@ import (
 // fields require no synchronization.
 type State struct {
 	DisplayedLive   bool
+	GameStarted     bool
 	Finaled         bool
 	LastEdgeDisplay time.Time
 	LastPregameWarn time.Time

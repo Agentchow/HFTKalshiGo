@@ -138,6 +138,13 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		status := gu.MatchStatus // parser-derived: "Game Start", "Overtime", or "Live"
 		if scoreChanged {
 			status = "Score Change"
+		} else if status == "Game Start" {
+			ds := e.display.Get(gc.EID)
+			if ds.GameStarted {
+				status = "Live"
+			} else {
+				ds.GameStarted = true
+			}
 		} else if status == "Overtime" {
 			if hs, ok := gc.Game.(*hockeyState.HockeyState); ok {
 				if hs.OvertimeNotified {
@@ -146,20 +153,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 					hs.OvertimeNotified = true
 				}
 			}
-		}
-
-		if status == "Live" {
-			ds := e.display.Get(gc.EID)
-			if !ds.DisplayedLive {
-				ds.DisplayedLive = true
-				gc.SetMatchStatus("Live")
-			}
-		} else {
-			ds := e.display.Get(gc.EID)
-			if !ds.DisplayedLive {
-				ds.DisplayedLive = true
-			}
-			defer gc.SetMatchStatus(status)
 		}
 
 		// ── Red card callback (soccer) ──────────────────────────
@@ -183,6 +176,20 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		}
 
 		gc.Game.RecalcEdge(gc.Tickers)
+
+		if status == "Live" {
+			ds := e.display.Get(gc.EID)
+			if !ds.DisplayedLive {
+				ds.DisplayedLive = true
+				gc.SetMatchStatus("Live")
+			}
+		} else {
+			ds := e.display.Get(gc.EID)
+			if !ds.DisplayedLive {
+				ds.DisplayedLive = true
+			}
+			gc.SetMatchStatus(status)
+		}
 	})
 
 	return nil

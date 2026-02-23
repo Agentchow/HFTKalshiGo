@@ -92,6 +92,14 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 	}
 
 	gc.Send(func() {
+		// Skip games not matched to a Kalshi event. resolveTickers
+		// runs async on game creation and populates gc.Tickers via
+		// its own gc.Send; until that lands there is nothing to
+		// evaluate, display, or log.
+		if len(gc.Tickers) == 0 {
+			return
+		}
+
 		strat, ok := e.registry.Get(sc.Sport)
 		if !ok {
 			return
@@ -109,10 +117,6 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 
 		e.logSoccerTraining(gc, firstLive, scoreChanged)
 		e.logHockeyTraining(gc, firstLive, scoreChanged)
-
-		if len(gc.Tickers) == 0 {
-			return
-		}
 
 		if !gc.Game.HasPregame() {
 			ds := e.display.Get(gc.EID)
@@ -172,6 +176,11 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 			return
 		}
 		ds.Finaled = true
+		telemetry.Metrics.ActiveGames.Dec()
+
+		if len(gc.Tickers) == 0 {
+			return
+		}
 
 		strat, ok := e.registry.Get(gf.Sport)
 		if !ok {
@@ -183,12 +192,9 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 
 		e.logSoccerTrainingFinish(gc, &gf)
 		e.logHockeyTrainingFinish(gc, &gf)
-
 		if ds.DisplayedLive {
 			printGame(gc, "FINAL")
 		}
-
-		telemetry.Metrics.ActiveGames.Dec()
 	})
 
 	return nil

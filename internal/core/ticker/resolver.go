@@ -79,6 +79,7 @@ var seriesSlugs = map[string]string{
 	"KXEFLCHAMPIONSHIPGAME": "efl-championship-game",
 	"KXLIGAPORTUGALGAME":    "liga-portugal-game",
 	"KXDENSUPERLIGAGAME":    "danish-superliga-game",
+	"KXMLSGAME":             "major-league-soccer-game",
 	// Football
 	"KXNFLGAME":   "nfl-game",
 	"KXNCAAFGAME": "ncaa-football-game",

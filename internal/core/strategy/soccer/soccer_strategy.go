@@ -52,7 +52,7 @@ func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy
 
 const (
 	startupMaxAttempts = 5
-	startupRetryDelay  = 15 * time.Second
+	startupRetryDelay  = 10 * time.Second
 )
 
 func (s *Strategy) loadPregameWithRetry() {

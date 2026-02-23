@@ -3,6 +3,7 @@ package training
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,6 +13,14 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+func round3(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	r := math.Round(*v*10000) / 10000
+	return &r
+}
 
 const (
 	maxStoreBytes  int64   = 3 << 30 // 3 GiB
@@ -169,10 +178,10 @@ func (s *Store) Insert(row SoccerRow) (int64, error) {
 		row.TimeRemain,
 		row.RedCardsHome,
 		row.RedCardsAway,
-		row.PregameHomePct,
-		row.PregameDrawPct,
-		row.PregameAwayPct,
-		row.PregameG0,
+		round3(row.PregameHomePct),
+		round3(row.PregameDrawPct),
+		round3(row.PregameAwayPct),
+		round3(row.PregameG0),
 		row.ActualOutcome,
 	)
 	if err != nil {
@@ -209,12 +218,12 @@ func (s *Store) BackfillOdds(rowID int64, odds OddsBackfill) {
 				kalshi_draw_pct_l   = ?,
 				kalshi_away_pct_l   = ?
 			WHERE id = ?`,
-			odds.PinnacleHomePctL,
-			odds.PinnacleDrawPctL,
-			odds.PinnacleAwayPctL,
-			odds.KalshiHomePctL,
-			odds.KalshiDrawPctL,
-			odds.KalshiAwayPctL,
+			round3(odds.PinnacleHomePctL),
+			round3(odds.PinnacleDrawPctL),
+			round3(odds.PinnacleAwayPctL),
+			round3(odds.KalshiHomePctL),
+			round3(odds.KalshiDrawPctL),
+			round3(odds.KalshiAwayPctL),
 			rowID,
 		)
 		if err != nil {

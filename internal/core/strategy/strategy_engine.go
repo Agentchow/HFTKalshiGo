@@ -115,8 +115,9 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
 		firstLive := !prevHasLive && gc.Game.HasLiveData()
 
-		e.logSoccerTraining(gc, firstLive, scoreChanged)
-		e.logHockeyTraining(gc, firstLive, scoreChanged)
+		// Training DB writes run last, after all edge/display work.
+		defer e.logSoccerTraining(gc, firstLive, scoreChanged)
+		defer e.logHockeyTraining(gc, firstLive, scoreChanged)
 
 		if !gc.Game.HasPregame() {
 			ds := e.display.Get(gc.EID)
@@ -190,8 +191,9 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 		intents := strat.OnFinish(gc, &gf)
 		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
 
-		e.logSoccerTrainingFinish(gc, &gf)
-		e.logHockeyTrainingFinish(gc, &gf)
+		defer e.logSoccerTrainingFinish(gc, &gf)
+		defer e.logHockeyTrainingFinish(gc, &gf)
+
 		if ds.DisplayedLive {
 			printGame(gc, "FINAL")
 		}

@@ -2,8 +2,11 @@ package hockey
 
 import (
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
@@ -11,7 +14,17 @@ import (
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
-const discrepancyPct = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an order
+const (
+	discrepancyPct   = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an order
+	pregameCacheTTL  = 30 * time.Minute
+	pregameRetryCool = 30 * time.Second
+)
+
+// PregameOddsProvider abstracts fetching pregame odds.
+// Satisfied by *goalserve_http.PregameClient.
+type PregameOddsProvider interface {
+	FetchHockeyPregame() ([]odds.PregameOdds, error)
+}
 
 // Strategy implements the hockey-specific trading logic.
 // On each score change it:
@@ -22,16 +35,41 @@ const discrepancyPct = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an o
 type Strategy struct {
 	scoreDropConfirmSec int
 	lastPendingLog      time.Time
+
+	pregame        PregameOddsProvider
+	pregameMu      sync.RWMutex
+	pregameCache   []odds.PregameOdds
+	pregameFetch   time.Time
+	pregameLastTry time.Time
+	pregameApplied sync.Map
 }
 
-func NewStrategy(scoreDropConfirmSec int) *Strategy {
-	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
+func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy {
+	s := &Strategy{
+		scoreDropConfirmSec: scoreDropConfirmSec,
+		pregame:             pregame,
+	}
+	if pregame != nil {
+		s.refreshPregameCache()
+	}
+	return s
 }
 
 func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
 		return strategy.EvalResult{}
+	}
+
+	var displayEvents []string
+
+	if s.pregame != nil {
+		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
+			if s.applyPregame(hs, sc.HomeTeam, sc.AwayTeam) {
+				s.pregameApplied.Store(gc.EID, true)
+				displayEvents = append(displayEvents, "LIVE")
+			}
+		}
 	}
 
 	// Score-drop guard
@@ -42,14 +80,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 			telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
 				result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 			s.lastPendingLog = time.Now()
-			return strategy.EvalResult{}
+			return strategy.EvalResult{DisplayEvents: displayEvents}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
 					result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return strategy.EvalResult{}
+			return strategy.EvalResult{DisplayEvents: displayEvents}
 		case "confirmed":
 			hs.ClearOrdered()
 			telemetry.Infof("hockey: overturn confirmed for %s -> %d-%d",
@@ -59,7 +97,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 
 	changed := hs.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
 	if !changed {
-		return strategy.EvalResult{}
+		return strategy.EvalResult{DisplayEvents: displayEvents}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
@@ -75,7 +113,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 	// Compute model: Pinnacle first, math model fallback
 	s.computeModel(hs)
 
-	return strategy.EvalResult{Intents: s.checkEdges(gc, hs)}
+	return strategy.EvalResult{
+		Intents:       s.checkEdges(gc, hs),
+		DisplayEvents: displayEvents,
+	}
 }
 
 func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
@@ -176,6 +217,97 @@ func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState)
 	}
 
 	return intents
+}
+
+// ── Pregame odds infrastructure ──────────────────────────────────────
+
+func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam string) bool {
+	if s.pregame == nil {
+		return false
+	}
+
+	s.pregameMu.RLock()
+	stale := time.Since(s.pregameFetch) > pregameCacheTTL
+	cached := s.pregameCache
+	s.pregameMu.RUnlock()
+
+	if stale || cached == nil {
+		go s.refreshPregameCache()
+		if cached == nil {
+			return false
+		}
+	}
+
+	homeNorm := strings.ToLower(strings.TrimSpace(homeTeam))
+	awayNorm := strings.ToLower(strings.TrimSpace(awayTeam))
+
+	for _, p := range cached {
+		pHome := strings.ToLower(strings.TrimSpace(p.HomeTeam))
+		pAway := strings.ToLower(strings.TrimSpace(p.AwayTeam))
+
+		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
+			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
+			hs.HomeWinPct = p.HomeWinPct
+			hs.AwayWinPct = p.AwayWinPct
+			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%%",
+				homeTeam, awayTeam, p.HomeWinPct*100, p.AwayWinPct*100)
+			return true
+		}
+	}
+	telemetry.Debugf("pregame: no match for %s vs %s", homeTeam, awayTeam)
+	return false
+}
+
+func (s *Strategy) refreshPregameCache() {
+	s.pregameMu.Lock()
+	if s.pregameCache != nil && time.Since(s.pregameFetch) < pregameCacheTTL {
+		s.pregameMu.Unlock()
+		return
+	}
+	if time.Since(s.pregameLastTry) < pregameRetryCool {
+		s.pregameMu.Unlock()
+		return
+	}
+	s.pregameLastTry = time.Now()
+	s.pregameMu.Unlock()
+
+	fetched, err := s.pregame.FetchHockeyPregame()
+	if err != nil {
+		telemetry.Warnf("pregame: fetch failed: %v", err)
+		return
+	}
+
+	if fetched == nil {
+		fetched = []odds.PregameOdds{}
+	}
+
+	s.pregameMu.Lock()
+	s.pregameCache = fetched
+	s.pregameFetch = time.Now()
+	s.pregameMu.Unlock()
+}
+
+func fuzzyTeamMatch(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b || strings.Contains(a, b) || strings.Contains(b, a) {
+		return true
+	}
+	// Webhook sends abbreviated names (e.g. "ont reign") while GoalServe
+	// uses full names ("ontario reign"). Fall back to checking whether any
+	// significant word (>=4 chars) appears in both strings.
+	for _, w := range strings.Fields(a) {
+		if len(w) >= 4 && strings.Contains(b, w) {
+			return true
+		}
+	}
+	for _, w := range strings.Fields(b) {
+		if len(w) >= 4 && strings.Contains(a, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // slamOrders emits high-confidence orders when a game finishes with a clear winner.

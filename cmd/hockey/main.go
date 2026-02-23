@@ -8,6 +8,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/kalshi_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
+	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
 	"github.com/charleschow/hft-trading/internal/core/execution"
@@ -46,12 +47,18 @@ func main() {
 	// ── Ticker resolver ────────────────────────────────────────
 	tickerResolver := ticker.NewResolver(kalshiClient, cfg.TickersConfigDir, events.SportHockey)
 
+	// ── Pregame odds ──────────────────────────────────────────
+	var pregame hockeyStrat.PregameOddsProvider
+	if cfg.GoalserveAPIKey != "" {
+		pregame = goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
+	}
+
 	// ── Kalshi WebSocket ──────────────────────────────────────
 	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec))
+	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregame))
 	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 
 	// ── Execution ──────────────────────────────────────────────

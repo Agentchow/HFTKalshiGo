@@ -1,7 +1,9 @@
 package goalserve_http
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"math"
@@ -17,6 +19,7 @@ import (
 const (
 	goalserveBase    = "http://www.goalserve.com/getfeed"
 	soccerPregameCat = "soccer_10"
+	hockeyPregameCat = "hockey_10"
 	requestTimeout   = 45 * time.Second
 	rateLimitSec     = 10
 )
@@ -69,6 +72,41 @@ func (c *PregameClient) FetchSoccerPregame() ([]odds.PregameOdds, error) {
 	}
 
 	telemetry.Infof("goalserve: fetched %d soccer pregame matches", len(matches))
+	return matches, nil
+}
+
+// FetchHockeyPregame fetches all hockey pregame odds from GoalServe and returns
+// a slice of parsed matches with 2-way moneyline probabilities.
+// GoalServe's hockey endpoint returns XML (unlike soccer which supports JSON).
+func (c *PregameClient) FetchHockeyPregame() ([]odds.PregameOdds, error) {
+	c.rateLimit()
+
+	url := fmt.Sprintf("%s/%s/getodds/hockey?cat=%s", goalserveBase, c.apiKey, hockeyPregameCat)
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("goalserve hockey pregame fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("goalserve hockey pregame: status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("goalserve hockey pregame read: %w", err)
+	}
+
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, nil
+	}
+
+	matches, err := parseHockeyPregameXML(body)
+	if err != nil {
+		return nil, err
+	}
+
+	telemetry.Infof("goalserve: fetched %d hockey pregame matches", len(matches))
 	return matches, nil
 }
 
@@ -147,6 +185,137 @@ func parseSoccerPregameJSON(data []byte) ([]odds.PregameOdds, error) {
 		}
 	}
 	return out, nil
+}
+
+// --- Hockey XML parsing (GoalServe hockey endpoint returns XML) ---
+
+type xmlScores struct {
+	XMLName    xml.Name      `xml:"scores"`
+	Categories []xmlCategory `xml:"category"`
+}
+
+type xmlCategory struct {
+	Name    string     `xml:"name,attr"`
+	ID      string     `xml:"id,attr"`
+	Matches []xmlMatch `xml:"matches>match"`
+}
+
+type xmlMatch struct {
+	ID        string       `xml:"id,attr"`
+	LocalTeam xmlTeam      `xml:"localteam"`
+	AwayTeam  xmlTeam      `xml:"awayteam"`
+	Odds      xmlOddsGroup `xml:"odds"`
+}
+
+type xmlTeam struct {
+	Name string `xml:"name,attr"`
+}
+
+type xmlOddsGroup struct {
+	Types []xmlOddsType `xml:"type"`
+}
+
+type xmlOddsType struct {
+	Value      string          `xml:"value,attr"`
+	ID         string          `xml:"id,attr"`
+	Bookmakers []xmlBookmaker  `xml:"bookmaker"`
+}
+
+type xmlBookmaker struct {
+	Name string   `xml:"name,attr"`
+	ID   string   `xml:"id,attr"`
+	Odds []xmlOdd `xml:"odd"`
+}
+
+type xmlOdd struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"value,attr"`
+}
+
+func parseHockeyPregameXML(data []byte) ([]odds.PregameOdds, error) {
+	data = stripBOM(data)
+
+	var scores xmlScores
+	if err := xml.Unmarshal(data, &scores); err != nil {
+		return nil, fmt.Errorf("goalserve hockey pregame XML parse: %w", err)
+	}
+
+	var out []odds.PregameOdds
+	for _, cat := range scores.Categories {
+		for _, m := range cat.Matches {
+			parsed := extractMoneyline2WayXML(m)
+			if parsed == nil {
+				continue
+			}
+			parsed.HomeTeam = strings.TrimSpace(m.LocalTeam.Name)
+			parsed.AwayTeam = strings.TrimSpace(m.AwayTeam.Name)
+			if parsed.HomeTeam == "" || parsed.AwayTeam == "" {
+				continue
+			}
+			out = append(out, *parsed)
+		}
+	}
+	return out, nil
+}
+
+func extractMoneyline2WayXML(m xmlMatch) *odds.PregameOdds {
+	var mlType *xmlOddsType
+	for i, ot := range m.Odds.Types {
+		nameLow := strings.ToLower(strings.TrimSpace(ot.Value))
+		if ot.ID == "1" ||
+			nameLow == "home/away" || nameLow == "moneyline" ||
+			nameLow == "money line" || nameLow == "match winner" ||
+			nameLow == "2way result" {
+			mlType = &m.Odds.Types[i]
+			break
+		}
+	}
+	if mlType == nil {
+		return nil
+	}
+
+	bm := pickXMLBookmaker(mlType.Bookmakers)
+	if bm == nil {
+		return nil
+	}
+
+	var homeDec, awayDec float64
+	for _, o := range bm.Odds {
+		name := strings.TrimSpace(o.Name)
+		val := parseFloat(o.Value)
+		if val <= 1.0 {
+			continue
+		}
+		switch name {
+		case "1", "Home":
+			homeDec = val
+		case "2", "Away":
+			awayDec = val
+		}
+	}
+	if homeDec == 0 || awayDec == 0 {
+		return nil
+	}
+
+	h, a := odds.RemoveVig2(homeDec, awayDec)
+	return &odds.PregameOdds{
+		HomeWinPct: h,
+		AwayWinPct: a,
+	}
+}
+
+func pickXMLBookmaker(bms []xmlBookmaker) *xmlBookmaker {
+	if len(bms) == 0 {
+		return nil
+	}
+	for _, pref := range preferredBookmakers {
+		for i, b := range bms {
+			if strings.Contains(strings.ToLower(b.Name), pref) {
+				return &bms[i]
+			}
+		}
+	}
+	return &bms[0]
 }
 
 func stripBOM(data []byte) []byte {

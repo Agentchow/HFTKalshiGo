@@ -218,6 +218,10 @@ func (s *Strategy) refreshPregameCache() {
 		return
 	}
 
+	if fetched == nil {
+		fetched = []odds.PregameOdds{}
+	}
+
 	s.pregameMu.Lock()
 	s.pregameCache = fetched
 	s.pregameFetch = time.Now()

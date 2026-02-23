@@ -115,7 +115,12 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 		}
 
 		if !gc.Game.HasPregame() {
-			telemetry.Warnf("game %s: suppressed — pregame odds not yet loaded", gc.EID)
+			ds := e.display.Get(gc.EID)
+			if time.Since(ds.LastPregameWarn) >= 10*time.Second {
+				telemetry.Warnf("game %s (%s vs %s): suppressed — pregame odds not yet loaded",
+					gc.EID, gc.Game.GetHomeTeam(), gc.Game.GetAwayTeam())
+				ds.LastPregameWarn = time.Now()
+			}
 			return
 		}
 

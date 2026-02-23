@@ -12,6 +12,7 @@ type State struct {
 	DisplayedLive   bool
 	Finaled         bool
 	LastEdgeDisplay time.Time
+	LastPregameWarn time.Time
 }
 
 // Tracker maps game EIDs to their display state. The map itself is

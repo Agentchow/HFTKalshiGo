@@ -44,9 +44,35 @@ func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy
 		pregame:             pregame,
 	}
 	if pregame != nil {
-		s.refreshPregameCache()
+		s.loadPregameWithRetry()
 	}
 	return s
+}
+
+const (
+	startupMaxAttempts = 5
+	startupRetryDelay  = 3 * time.Second
+)
+
+func (s *Strategy) loadPregameWithRetry() {
+	for attempt := 1; attempt <= startupMaxAttempts; attempt++ {
+		fetched, err := s.pregame.FetchSoccerPregame()
+		if err != nil {
+			telemetry.Warnf("pregame: startup fetch attempt %d/%d failed: %v", attempt, startupMaxAttempts, err)
+			if attempt < startupMaxAttempts {
+				time.Sleep(startupRetryDelay)
+			}
+			continue
+		}
+		if fetched == nil {
+			fetched = []odds.PregameOdds{}
+		}
+		s.pregameCache = fetched
+		s.pregameFetch = time.Now()
+		telemetry.Infof("pregame: loaded %d soccer matches on startup", len(fetched))
+		return
+	}
+	telemetry.Errorf("pregame: all %d startup attempts failed — proceeding without pregame data", startupMaxAttempts)
 }
 
 func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {

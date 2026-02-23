@@ -78,6 +78,7 @@ type GameState interface {
 	ClearScoreDropPending()
 	IsScoreDropPending() bool
 	SetTickers(home, away, draw string)
+	HasPregame() bool
 
 	// RecalcEdge recomputes model-vs-market edge from the current
 	// model/pinnacle probabilities and Kalshi ticker prices.

@@ -95,6 +95,7 @@ func (s *SoccerState) GetAwayScore() int         { return s.AwayScore }
 func (s *SoccerState) GetPeriod() string         { return s.Half }
 func (s *SoccerState) GetTimeRemaining() float64 { return s.TimeLeft }
 func (s *SoccerState) HasLiveData() bool         { return s.hasLiveData }
+func (s *SoccerState) HasPregame() bool          { return s.PregameApplied }
 
 func (s *SoccerState) GoalDiff() int { return s.HomeScore - s.AwayScore }
 

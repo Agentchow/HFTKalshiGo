@@ -50,9 +50,35 @@ func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy
 		pregame:             pregame,
 	}
 	if pregame != nil {
-		s.refreshPregameCache()
+		s.loadPregameWithRetry()
 	}
 	return s
+}
+
+const (
+	startupMaxAttempts = 5
+	startupRetryDelay  = 3 * time.Second
+)
+
+func (s *Strategy) loadPregameWithRetry() {
+	for attempt := 1; attempt <= startupMaxAttempts; attempt++ {
+		fetched, err := s.pregame.FetchHockeyPregame()
+		if err != nil {
+			telemetry.Warnf("pregame: startup fetch attempt %d/%d failed: %v", attempt, startupMaxAttempts, err)
+			if attempt < startupMaxAttempts {
+				time.Sleep(startupRetryDelay)
+			}
+			continue
+		}
+		if fetched == nil {
+			fetched = []odds.PregameOdds{}
+		}
+		s.pregameCache = fetched
+		s.pregameFetch = time.Now()
+		telemetry.Infof("pregame: loaded %d hockey matches on startup", len(fetched))
+		return
+	}
+	telemetry.Errorf("pregame: all %d startup attempts failed — proceeding without pregame data", startupMaxAttempts)
 }
 
 func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
@@ -66,6 +92,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 	if s.pregame != nil {
 		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
 			if s.applyPregame(hs, sc.HomeTeam, sc.AwayTeam) {
+				hs.PregameApplied = true
 				s.pregameApplied.Store(gc.EID, true)
 				displayEvents = append(displayEvents, "LIVE")
 			}
@@ -249,6 +276,10 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
 			hs.HomeWinPct = p.HomeWinPct
 			hs.AwayWinPct = p.AwayWinPct
+			if p.G0 > 0 {
+				g0 := p.G0
+				hs.PregameG0 = &g0
+			}
 			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%%",
 				homeTeam, awayTeam, p.HomeWinPct*100, p.AwayWinPct*100)
 			return true

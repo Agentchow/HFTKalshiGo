@@ -62,6 +62,7 @@ func (f *FootballState) GetAwayScore() int         { return f.AwayScore }
 func (f *FootballState) GetPeriod() string         { return f.Quarter }
 func (f *FootballState) GetTimeRemaining() float64 { return f.TimeLeft }
 func (f *FootballState) HasLiveData() bool         { return f.hasLiveData }
+func (f *FootballState) HasPregame() bool          { return true }
 
 func (f *FootballState) Lead() int { return f.HomeScore - f.AwayScore }
 

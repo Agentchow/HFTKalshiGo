@@ -8,6 +8,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
+	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
@@ -38,12 +39,19 @@ type Engine struct {
 	kalshiWSUp atomic.Bool
 
 	soccerTraining *training.Store
+	hockeyTraining *training.HockeyStore
 	backfillDelay  time.Duration
 }
 
 // SetSoccerTraining enables soccer training DB logging.
 func (e *Engine) SetSoccerTraining(s *training.Store, backfillDelaySec int) {
 	e.soccerTraining = s
+	e.backfillDelay = time.Duration(backfillDelaySec) * time.Second
+}
+
+// SetHockeyTraining enables hockey training DB logging.
+func (e *Engine) SetHockeyTraining(s *training.HockeyStore, backfillDelaySec int) {
+	e.hockeyTraining = s
 	e.backfillDelay = time.Duration(backfillDelaySec) * time.Second
 }
 
@@ -100,8 +108,14 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 		firstLive := !prevHasLive && gc.Game.HasLiveData()
 
 		e.logSoccerTraining(gc, firstLive, scoreChanged)
+		e.logHockeyTraining(gc, firstLive, scoreChanged)
 
 		if len(gc.Tickers) == 0 {
+			return
+		}
+
+		if !gc.Game.HasPregame() {
+			telemetry.Warnf("game %s: suppressed — pregame odds not yet loaded", gc.EID)
 			return
 		}
 
@@ -163,6 +177,7 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
 
 		e.logSoccerTrainingFinish(gc, &gf)
+		e.logHockeyTrainingFinish(gc, &gf)
 
 		if ds.DisplayedLive {
 			printGame(gc, "FINAL")
@@ -215,6 +230,10 @@ func (e *Engine) onMarketData(evt events.Event) error {
 			}
 			if me.Volume > 0 {
 				td.Volume = me.Volume
+			}
+
+			if !gc.Game.HasPregame() {
+				return
 			}
 
 			gc.Game.RecalcEdge(gc.Tickers)
@@ -468,6 +487,127 @@ func regulationOutcome(ss *soccerState.SoccerState) string {
 }
 
 func f64Ptr(v float64) *float64 { return &v }
+
+// ── Hockey training DB helpers ───────────────────────────────────────
+
+func (e *Engine) logHockeyTraining(gc *game.GameContext, firstLive, scoreChanged bool) {
+	if e.hockeyTraining == nil || gc.Sport != events.SportHockey {
+		return
+	}
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
+	if !ok {
+		return
+	}
+
+	var eventType string
+	if firstLive && isGameStart(gc) {
+		eventType = "Game Start"
+	} else if scoreChanged {
+		eventType = "Score Change"
+	} else {
+		return
+	}
+
+	row := e.buildHockeyRow(gc, hs, eventType, nil)
+	rowID, err := e.hockeyTraining.Insert(row)
+	if err != nil {
+		telemetry.Warnf("hockey training: insert failed: %v", err)
+		return
+	}
+
+	e.spawnHockeyBackfill(gc, hs, rowID)
+}
+
+func (e *Engine) logHockeyTrainingFinish(gc *game.GameContext, gf *events.GameFinishEvent) {
+	if e.hockeyTraining == nil || gc.Sport != events.SportHockey {
+		return
+	}
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
+	if !ok {
+		return
+	}
+
+	outcome := hockeyOutcome(gf.HomeScore, gf.AwayScore)
+	row := e.buildHockeyRow(gc, hs, "Game Finish", &outcome)
+	rowID, err := e.hockeyTraining.Insert(row)
+	if err != nil {
+		telemetry.Warnf("hockey training: insert (finish) failed: %v", err)
+		return
+	}
+
+	e.spawnHockeyBackfill(gc, hs, rowID)
+}
+
+func (e *Engine) buildHockeyRow(gc *game.GameContext, hs *hockeyState.HockeyState, eventType string, outcome *string) training.HockeyRow {
+	row := training.HockeyRow{
+		Ts:            time.Now(),
+		GameID:        gc.EID,
+		League:        gc.League,
+		HomeTeam:      hs.HomeTeam,
+		AwayTeam:      hs.AwayTeam,
+		NormHome:      ticker.Normalize(hs.HomeTeam, ticker.HockeyAliases),
+		NormAway:      ticker.Normalize(hs.AwayTeam, ticker.HockeyAliases),
+		EventType:     eventType,
+		HomeScore:     hs.HomeScore,
+		AwayScore:     hs.AwayScore,
+		Period:        hs.Period,
+		TimeRemain:    hs.TimeLeft,
+		ActualOutcome: outcome,
+	}
+
+	if hs.PregameApplied {
+		row.PregameHomePct = f64Ptr(hs.HomeWinPct)
+		row.PregameAwayPct = f64Ptr(hs.AwayWinPct)
+		row.PregameG0 = hs.PregameG0
+	}
+
+	return row
+}
+
+func (e *Engine) spawnHockeyBackfill(gc *game.GameContext, hs *hockeyState.HockeyState, rowID int64) {
+	delay := e.backfillDelay
+	go func() {
+		time.Sleep(delay)
+		gc.Send(func() {
+			odds := training.HockeyOddsBackfill{}
+
+			if hs.PinnacleHomePct != nil {
+				v := *hs.PinnacleHomePct / 100.0
+				odds.PinnacleHomePctL = &v
+			}
+			if hs.PinnacleAwayPct != nil {
+				v := *hs.PinnacleAwayPct / 100.0
+				odds.PinnacleAwayPctL = &v
+			}
+
+			if gc.KalshiConnected && len(gc.Tickers) > 0 {
+				if td, ok := gc.Tickers[hs.HomeTicker]; ok && td.YesAsk >= 0 {
+					v := td.YesAsk / 100.0
+					odds.KalshiHomePctL = &v
+				}
+				if td, ok := gc.Tickers[hs.AwayTicker]; ok && td.YesAsk >= 0 {
+					v := td.YesAsk / 100.0
+					odds.KalshiAwayPctL = &v
+				}
+			}
+
+			e.hockeyTraining.BackfillOdds(rowID, odds)
+		})
+	}()
+}
+
+// hockeyOutcome returns the outcome for a finished hockey game.
+// Tied scores at finish mean the game went to a shootout that
+// GoalServe didn't report individual goals for.
+func hockeyOutcome(homeScore, awayScore int) string {
+	if homeScore > awayScore {
+		return "home_win"
+	}
+	if awayScore > homeScore {
+		return "away_win"
+	}
+	return "shootout"
+}
 
 // resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
 func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent, gameStartedAt time.Time) {

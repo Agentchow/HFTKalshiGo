@@ -33,6 +33,9 @@ type HockeyState struct {
 	PinnacleHomePct *float64 // 0–100
 	PinnacleAwayPct *float64 // 0–100
 
+	PregameApplied bool
+	PregameG0      *float64 // expected total goals from O/U market, nil if unavailable
+
 	EdgeHomeYes float64
 	EdgeAwayYes float64
 	EdgeHomeNo  float64
@@ -75,6 +78,7 @@ func (h *HockeyState) GetAwayScore() int         { return h.AwayScore }
 func (h *HockeyState) GetPeriod() string         { return h.Period }
 func (h *HockeyState) GetTimeRemaining() float64 { return h.TimeLeft }
 func (h *HockeyState) HasLiveData() bool         { return h.hasLiveData }
+func (h *HockeyState) HasPregame() bool          { return h.PregameApplied }
 
 func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 

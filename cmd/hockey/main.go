@@ -16,6 +16,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/core/strategy"
 	hockeyStrat "github.com/charleschow/hft-trading/internal/core/strategy/hockey"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
+	"github.com/charleschow/hft-trading/internal/core/training"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/fanout"
 	"github.com/charleschow/hft-trading/internal/telemetry"
@@ -56,10 +57,19 @@ func main() {
 	// ── Kalshi WebSocket ──────────────────────────────────────
 	kalshiWS := kalshi_ws.NewClient(cfg.KalshiWSURL, kalshiSigner, bus)
 
+	// ── Hockey training DB ────────────────────────────────────
+	trainingStore, err := training.OpenHockeyStore(cfg.HockeyTrainingDBPath)
+	if err != nil {
+		telemetry.Errorf("Hockey training store: %v", err)
+		os.Exit(1)
+	}
+	defer trainingStore.Close()
+
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregame))
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
+	engine := strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
+	engine.SetHockeyTraining(trainingStore, cfg.TrainingBackfillDelaySec)
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)

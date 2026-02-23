@@ -29,6 +29,7 @@ type WebhookEvent struct {
 	Odds     map[string]OddsMarket      `json:"odds"`
 	Core     map[string]string          `json:"core"`
 	Stats    map[string]any             `json:"stats"`
+	STS      string                     `json:"sts"`
 }
 
 type EventInfo struct {
@@ -78,7 +79,7 @@ func NewParser(sport events.Sport) *Parser {
 }
 
 // Parse walks through every event in the payload and emits
-// ScoreChangeEvent / GameFinishEvent domain events.
+// GameUpdateEvent domain events.
 func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 	if payload == nil || len(payload.Events) == 0 {
 		return nil
@@ -102,33 +103,9 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 		league := ev.Info.League
 
 		odds := p.parseOdds(&ev)
-
-		if p.isFinished(period) {
-			finishEvt := events.GameFinishEvent{
-				EID:        eid,
-				Sport:      p.sport,
-				League:     league,
-				HomeTeam:   strings.TrimSpace(ev.TeamInfo.Home.Name),
-				AwayTeam:   strings.TrimSpace(ev.TeamInfo.Away.Name),
-				HomeScore:  homeScore,
-				AwayScore:  awayScore,
-				FinalState: period,
-			}
-			out = append(out, events.Event{
-				ID:        eid,
-				Type:      events.EventGameFinish,
-				Sport:     p.sport,
-				League:    league,
-				GameID:    eid,
-				Timestamp: now,
-				Payload:   finishEvt,
-			})
-			continue
-		}
-
 		homeRC, awayRC := p.extractRedCards(&ev)
 
-		scoreEvt := events.ScoreChangeEvent{
+		gu := events.GameUpdateEvent{
 			EID:          eid,
 			Sport:        p.sport,
 			League:       league,
@@ -143,19 +120,25 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			AwayRedCards:  awayRC,
 		}
 		if odds != nil {
-			scoreEvt.HomeWinPct = odds.HomeWinPct
-			scoreEvt.DrawPct = odds.DrawPct
-			scoreEvt.AwayWinPct = odds.AwayWinPct
+			gu.HomeWinPct = odds.HomeWinPct
+			gu.DrawPct = odds.DrawPct
+			gu.AwayWinPct = odds.AwayWinPct
+		}
+
+		gu.MatchStatus = p.inferMatchStatus(&ev, homeScore, awayScore, period)
+
+		if p.sport == events.SportHockey {
+			gu.PowerPlay, gu.HomePenaltyCount, gu.AwayPenaltyCount = p.extractPowerPlay(&ev)
 		}
 
 		out = append(out, events.Event{
 			ID:        eid,
-			Type:      events.EventScoreChange,
+			Type:      events.EventGameUpdate,
 			Sport:     p.sport,
 			League:    league,
 			GameID:    eid,
 			Timestamp: now,
-			Payload:   scoreEvt,
+			Payload:   gu,
 		})
 
 		telemetry.Metrics.EventsProcessed.Inc()
@@ -192,22 +175,6 @@ func (p *Parser) normalizePeriod(ev *WebhookEvent) string {
 		period = ev.Info.Status
 	}
 	return strings.TrimSpace(period)
-}
-
-func (p *Parser) isFinished(period string) bool {
-	low := strings.ToLower(period)
-	finishedTokens := []string{
-		"finished", "final", "ended", "ft",
-		"after over time", "after overtime", "after ot",
-		"after extra time", "aet",
-		"after penalties", "after pen",
-	}
-	for _, tok := range finishedTokens {
-		if low == tok || strings.Contains(low, tok) {
-			return true
-		}
-	}
-	return false
 }
 
 // calcTimeRemaining computes minutes remaining from the period string plus
@@ -519,6 +486,83 @@ func intFromStringMap(m map[string]string, keys ...string) int {
 		}
 	}
 	return 0
+}
+
+// inferMatchStatus determines the match status from a single webhook snapshot.
+// Detects Game Start (0-0, first period, early clock) and Overtime (hockey).
+// Score Change is determined by the engine via state diffing.
+func (p *Parser) inferMatchStatus(ev *WebhookEvent, homeScore, awayScore int, period string) string {
+	low := strings.ToLower(strings.TrimSpace(period))
+
+	// Game Start: 0-0, first period/half, early in the game.
+	if homeScore == 0 && awayScore == 0 {
+		switch p.sport {
+		case events.SportSoccer:
+			if strings.Contains(low, "1st") {
+				if m, err := strconv.Atoi(strings.Split(ev.Info.Minute, ":")[0]); err == nil && m <= 5 {
+					return "Game Start"
+				}
+			}
+		case events.SportHockey:
+			if strings.Contains(low, "1st") {
+				if mins := parsePeriodClock(ev.Info.Seconds, 0); mins >= 17 {
+					return "Game Start"
+				}
+			}
+		}
+	}
+
+	// Overtime (hockey): GoalServe uses "Overtimer" for the OT period.
+	if p.sport == events.SportHockey {
+		if strings.Contains(low, "overtime") || strings.Contains(low, "overtimer") || low == "ot" {
+			return "Overtime"
+		}
+	}
+
+	return "Live"
+}
+
+// extractPowerPlay parses the hockey STS field for power play state and
+// cumulative penalty counts. The STS format from GoalServe looks like:
+//
+//	Penalties=3:4|Goals on Power Play=0:0|GPP=0 / 3:0 / 4|INFO=5 ON 4|
+//
+// Returns whether a PP is active and cumulative home:away penalty counts.
+func (p *Parser) extractPowerPlay(ev *WebhookEvent) (powerPlay bool, homePen, awayPen int) {
+	if ev.STS == "" {
+		return false, 0, 0
+	}
+	upper := strings.ToUpper(ev.STS)
+
+	// Check INFO= for active power play (5 ON 4, 5 ON 3, 4 ON 3).
+	if idx := strings.Index(upper, "INFO="); idx >= 0 {
+		info := upper[idx+5:]
+		if i := strings.Index(info, "|"); i >= 0 {
+			info = info[:i]
+		}
+		powerPlay = strings.Contains(info, "5 ON 4") ||
+			strings.Contains(info, "5 ON 3") ||
+			strings.Contains(info, "4 ON 3")
+	}
+
+	// Parse Penalties=H:A for cumulative counts.
+	if idx := strings.Index(upper, "PENALTIES="); idx >= 0 {
+		rest := upper[idx+len("PENALTIES="):]
+		if i := strings.Index(rest, "|"); i >= 0 {
+			rest = rest[:i]
+		}
+		parts := strings.SplitN(rest, ":", 2)
+		if len(parts) == 2 {
+			if h, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil {
+				homePen = h
+			}
+			if a, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+				awayPen = a
+			}
+		}
+	}
+
+	return powerPlay, homePen, awayPen
 }
 
 func containsAny(s string, substrs []string) bool {

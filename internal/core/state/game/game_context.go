@@ -40,6 +40,10 @@ type GameContext struct {
 	// Sport-specific state (scores, period, model output, tickers, pinnacle odds).
 	Game GameState
 
+	// MatchStatus is the last significant game event.
+	// One of: "Game Start", "Score Change", "Game Finish", "Overtime".
+	MatchStatus string
+
 	// Live market prices keyed by Kalshi ticker.
 	Tickers map[string]*TickerData
 
@@ -55,6 +59,12 @@ type GameContext struct {
 
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time
+
+	// Hooks — registered by the engine at creation time.
+	// Fired from within the game's goroutine.
+	OnMatchStatusChange func(gc *GameContext)
+	OnRedCardChange     func(gc *GameContext, homeRC, awayRC int)
+	OnPowerPlayChange   func(gc *GameContext, homeOn, awayOn bool)
 
 	inbox chan func()
 	stop  chan struct{}
@@ -117,6 +127,15 @@ func (gc *GameContext) Send(fn func()) {
 	default:
 		telemetry.Metrics.InboxOverflows.Inc()
 		telemetry.Warnf("game %s: inbox full (cap=%d), dropping event", gc.EID, cap(gc.inbox))
+	}
+}
+
+// SetMatchStatus updates the match status and fires the OnMatchStatusChange
+// hook. Must be called from the game's goroutine (inside a Send closure).
+func (gc *GameContext) SetMatchStatus(status string) {
+	gc.MatchStatus = status
+	if gc.OnMatchStatusChange != nil {
+		gc.OnMatchStatusChange(gc)
 	}
 }
 

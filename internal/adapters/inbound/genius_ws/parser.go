@@ -38,26 +38,27 @@ func ParseMessage(data []byte) []events.Event {
 	}
 
 	sport := mapSport(msg.Sport)
-	scoreEvt := events.ScoreChangeEvent{
-		EID:       msg.FixtureID,
-		Sport:     sport,
-		League:    msg.League,
-		HomeTeam:  msg.Home.Name,
-		AwayTeam:  msg.Away.Name,
-		HomeScore: msg.Home.Score,
-		AwayScore: msg.Away.Score,
-		Period:    msg.Period,
-		TimeLeft:  msg.TimeLeft,
+	gu := events.GameUpdateEvent{
+		EID:         msg.FixtureID,
+		Sport:       sport,
+		League:      msg.League,
+		HomeTeam:    msg.Home.Name,
+		AwayTeam:    msg.Away.Name,
+		HomeScore:   msg.Home.Score,
+		AwayScore:   msg.Away.Score,
+		Period:      msg.Period,
+		TimeLeft:    msg.TimeLeft,
+		MatchStatus: "Live",
 	}
 
 	return []events.Event{{
 		ID:        msg.FixtureID,
-		Type:      events.EventScoreChange,
+		Type:      events.EventGameUpdate,
 		Sport:     sport,
 		League:    msg.League,
 		GameID:    msg.FixtureID,
 		Timestamp: time.Now(),
-		Payload:   scoreEvt,
+		Payload:   gu,
 	}}
 }
 

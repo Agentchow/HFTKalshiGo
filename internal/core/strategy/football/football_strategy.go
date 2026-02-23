@@ -20,43 +20,43 @@ func NewStrategy(scoreDropConfirmSec int) *Strategy {
 	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
+func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) strategy.EvalResult {
 	fs, ok := gc.Game.(*fbState.FootballState)
 	if !ok {
 		return strategy.EvalResult{}
 	}
 
 	if fs.HasLiveData() {
-		result := fs.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
+		result := fs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
 		switch result {
 		case "new_drop":
 			telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
-				result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+				result, gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
-					result, sc.EID, fs.GetHomeScore(), fs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+					result, gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
 			return strategy.EvalResult{}
 		case "confirmed":
 			telemetry.Infof("football: overturn confirmed for %s -> %d-%d",
-				sc.EID, sc.HomeScore, sc.AwayScore)
+				gu.EID, gu.HomeScore, gu.AwayScore)
 		}
 	}
 
-	changed := fs.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
+	changed := fs.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	if !changed {
 		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	if sc.HomeWinPct != nil && sc.AwayWinPct != nil {
-		h := *sc.HomeWinPct * 100
-		a := *sc.AwayWinPct * 100
+	if gu.HomeWinPct != nil && gu.AwayWinPct != nil {
+		h := *gu.HomeWinPct * 100
+		a := *gu.AwayWinPct * 100
 		fs.ModelHomePct = h
 		fs.ModelAwayPct = a
 	}
@@ -71,7 +71,7 @@ func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return nil
 }
 
-func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
+func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent {
 	fs, ok := gc.Game.(*fbState.FootballState)
 	if !ok {
 		return nil

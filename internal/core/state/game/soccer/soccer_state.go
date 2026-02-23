@@ -42,6 +42,7 @@ type SoccerState struct {
 	PinnacleHomePct *float64
 	PinnacleDrawPct *float64
 	PinnacleAwayPct *float64
+	PinnacleUpdated bool // true when Pinnacle odds changed in the latest Evaluate
 
 	EdgeHomeYes float64
 	EdgeDrawYes float64
@@ -94,8 +95,8 @@ func (s *SoccerState) GetHomeScore() int         { return s.HomeScore }
 func (s *SoccerState) GetAwayScore() int         { return s.AwayScore }
 func (s *SoccerState) GetPeriod() string         { return s.Half }
 func (s *SoccerState) GetTimeRemaining() float64 { return s.TimeLeft }
-func (s *SoccerState) HasLiveData() bool         { return s.hasLiveData }
-func (s *SoccerState) HasPregame() bool          { return s.PregameApplied }
+func (s *SoccerState) HasLiveData() bool  { return s.hasLiveData }
+func (s *SoccerState) HasPregame() bool   { return s.PregameApplied }
 
 func (s *SoccerState) GoalDiff() int { return s.HomeScore - s.AwayScore }
 

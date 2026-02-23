@@ -82,58 +82,56 @@ func (s *Strategy) loadPregameWithRetry() {
 	telemetry.Errorf("pregame: all %d startup attempts failed — proceeding without pregame data", startupMaxAttempts)
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
+func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) strategy.EvalResult {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
 		return strategy.EvalResult{}
 	}
 
-	var displayEvents []string
-
 	if s.pregame != nil {
 		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
-			if s.applyPregame(hs, sc.HomeTeam, sc.AwayTeam) {
+			if s.applyPregame(hs, gu.HomeTeam, gu.AwayTeam) {
 				hs.PregameApplied = true
 				s.pregameApplied.Store(gc.EID, true)
-				displayEvents = append(displayEvents, "LIVE")
 			}
 		}
 	}
 
 	// Score-drop guard
 	if hs.HasLiveData() {
-		result := hs.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
+		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
 		switch result {
 		case "new_drop":
 			telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
-				result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+				result, gu.EID, hs.GetHomeScore(), hs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			s.lastPendingLog = time.Now()
-			return strategy.EvalResult{DisplayEvents: displayEvents}
+			return strategy.EvalResult{}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("hockey: score drop %s for %s (%d-%d -> %d-%d)",
-					result, sc.EID, hs.GetHomeScore(), hs.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+					result, gu.EID, hs.GetHomeScore(), hs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return strategy.EvalResult{DisplayEvents: displayEvents}
+			return strategy.EvalResult{}
 		case "confirmed":
 			hs.ClearOrdered()
 			telemetry.Infof("hockey: overturn confirmed for %s -> %d-%d",
-				sc.EID, sc.HomeScore, sc.AwayScore)
+				gu.EID, gu.HomeScore, gu.AwayScore)
 		}
 	}
 
-	changed := hs.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
+	changed := hs.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	if !changed {
-		return strategy.EvalResult{DisplayEvents: displayEvents}
+		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	// Update Pinnacle odds if available
-	if sc.HomeWinPct != nil && sc.AwayWinPct != nil {
-		h := *sc.HomeWinPct * 100
-		a := *sc.AwayWinPct * 100
+	hs.PinnacleUpdated = false
+	if gu.HomeWinPct != nil && gu.AwayWinPct != nil {
+		h := *gu.HomeWinPct * 100
+		a := *gu.AwayWinPct * 100
+		hs.PinnacleUpdated = hs.PinnacleHomePct == nil || *hs.PinnacleHomePct != h
 		hs.PinnacleHomePct = &h
 		hs.PinnacleAwayPct = &a
 	}
@@ -142,18 +140,17 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 	s.computeModel(hs)
 
 	return strategy.EvalResult{
-		Intents:       s.checkEdges(gc, hs),
-		DisplayEvents: displayEvents,
+		Intents: s.checkEdges(gc, hs),
 	}
 }
 
-func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
+func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent {
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
 		return nil
 	}
 
-	return s.slamOrders(gc, hs, gf)
+	return s.slamOrders(gc, hs, gu)
 }
 
 // computeModel sets ModelHomePct and ModelAwayPct on the game state.
@@ -343,13 +340,13 @@ func fuzzyTeamMatch(a, b string) bool {
 }
 
 // slamOrders emits high-confidence orders when a game finishes with a clear winner.
-func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState, gf *events.GameFinishEvent) []events.OrderIntent {
-	if gf.HomeScore == gf.AwayScore {
+func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState, gu *events.GameUpdateEvent) []events.OrderIntent {
+	if gu.HomeScore == gu.AwayScore {
 		return nil
 	}
 
 	var winTicker, outcome string
-	if gf.HomeScore > gf.AwayScore {
+	if gu.HomeScore > gu.AwayScore {
 		winTicker = hs.HomeTicker
 		outcome = "home"
 	} else {
@@ -362,16 +359,16 @@ func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState,
 	}
 
 	return []events.OrderIntent{{
-		Sport:     gf.Sport,
-		League:    gf.League,
-		GameID:    gf.EID,
-		EID:       gf.EID,
+		Sport:     gu.Sport,
+		League:    gu.League,
+		GameID:    gu.EID,
+		EID:       gu.EID,
 		Ticker:    winTicker,
 		Side:      "yes",
 		Outcome:   outcome,
 		LimitPct:  99,
-		Reason:    fmt.Sprintf("game finished %d-%d", gf.HomeScore, gf.AwayScore),
-		HomeScore: gf.HomeScore,
-		AwayScore: gf.AwayScore,
+		Reason:    fmt.Sprintf("game finished %d-%d", gu.HomeScore, gu.AwayScore),
+		HomeScore: gu.HomeScore,
+		AwayScore: gu.AwayScore,
 	}}
 }

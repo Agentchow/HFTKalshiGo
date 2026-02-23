@@ -54,30 +54,18 @@ func UnmarshalEvent(data []byte) (events.Event, error) {
 	}
 
 	switch evt.Type {
-	case events.EventScoreChange:
-		var sc events.ScoreChangeEvent
-		if err := json.Unmarshal(env.Payload, &sc); err != nil {
-			return evt, fmt.Errorf("unmarshal score_change: %w", err)
+	case events.EventGameUpdate:
+		var gu events.GameUpdateEvent
+		if err := json.Unmarshal(env.Payload, &gu); err != nil {
+			return evt, fmt.Errorf("unmarshal game_update: %w", err)
 		}
-		evt.Payload = sc
-	case events.EventGameFinish:
-		var gf events.GameFinishEvent
-		if err := json.Unmarshal(env.Payload, &gf); err != nil {
-			return evt, fmt.Errorf("unmarshal game_finish: %w", err)
-		}
-		evt.Payload = gf
+		evt.Payload = gu
 	case events.EventMarketData:
 		var me events.MarketEvent
 		if err := json.Unmarshal(env.Payload, &me); err != nil {
 			return evt, fmt.Errorf("unmarshal market_data: %w", err)
 		}
 		evt.Payload = me
-	case events.EventRedCard:
-		var rc events.RedCardEvent
-		if err := json.Unmarshal(env.Payload, &rc); err != nil {
-			return evt, fmt.Errorf("unmarshal red_card: %w", err)
-		}
-		evt.Payload = rc
 	case events.EventWSStatus:
 		var ws events.WSStatusEvent
 		if err := json.Unmarshal(env.Payload, &ws); err != nil {

@@ -24,7 +24,7 @@ type TickerSubscriber interface {
 	SubscribeTickers(tickers []string) error
 }
 
-// Engine subscribes to ScoreChangeEvent, MarketEvent, and GameFinishEvent.
+// Engine subscribes to GameUpdateEvent, MarketEvent, and WSStatusEvent.
 // It routes each event to the correct GameContext's goroutine via Send().
 // Strategy evaluation and order intent publishing happen on the game's
 // goroutine — never on the webhook or WS goroutine.
@@ -66,58 +66,111 @@ func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Regis
 	}
 	e.kalshiWSUp.Store(true)
 
-	bus.Subscribe(events.EventScoreChange, e.onScoreChange)
-	bus.Subscribe(events.EventGameFinish, e.onGameFinish)
+	bus.Subscribe(events.EventGameUpdate, e.onGameUpdate)
 	bus.Subscribe(events.EventMarketData, e.onMarketData)
 	bus.Subscribe(events.EventWSStatus, e.onWSStatus)
 
 	return e
 }
 
-func (e *Engine) onScoreChange(evt events.Event) error {
-	sc, ok := evt.Payload.(events.ScoreChangeEvent)
+func (e *Engine) onGameUpdate(evt events.Event) error {
+	gu, ok := evt.Payload.(events.GameUpdateEvent)
 	if !ok {
 		return nil
 	}
 
-	gc, exists := e.store.Get(sc.Sport, sc.EID)
+	gc, exists := e.store.Get(gu.Sport, gu.EID)
 	if !exists {
 		gameStart := evt.Timestamp
-		if sc.GameStartUTC > 0 {
-			gameStart = time.Unix(sc.GameStartUTC, 0)
+		if gu.GameStartUTC > 0 {
+			gameStart = time.Unix(gu.GameStartUTC, 0)
 		}
-		gc = e.createGameContext(sc, gameStart)
+		gc = e.createGameContext(gu, gameStart)
 		e.store.Put(gc)
 		telemetry.Metrics.ActiveGames.Inc()
 	}
 
 	gc.Send(func() {
-		// Skip games not matched to a Kalshi event. resolveTickers
-		// runs async on game creation and populates gc.Tickers via
-		// its own gc.Send; until that lands there is nothing to
-		// evaluate, display, or log.
-		if len(gc.Tickers) == 0 {
+		// ── Finish path ─────────────────────────────────────────
+		if isFinished(gu.Period) {
+			ds := e.display.Get(gc.EID)
+			if ds.Finaled {
+				return
+			}
+			ds.Finaled = true
+			telemetry.Metrics.ActiveGames.Dec()
+
+			if len(gc.Tickers) == 0 {
+				return
+			}
+
+			strat, ok := e.registry.Get(gu.Sport)
+			if !ok {
+				return
+			}
+
+			intents := strat.OnFinish(gc, &gu)
+			e.publishIntents(intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
+
+			defer gc.SetMatchStatus("Game Finish")
 			return
 		}
 
-		strat, ok := e.registry.Get(sc.Sport)
+		// ── Live path ───────────────────────────────────────────
+		strat, ok := e.registry.Get(gu.Sport)
 		if !ok {
 			return
 		}
 
 		prevHome := gc.Game.GetHomeScore()
 		prevAway := gc.Game.GetAwayScore()
-		prevHasLive := gc.Game.HasLiveData()
 
-		result := strat.Evaluate(gc, &sc)
-		e.publishIntents(result.Intents, sc.Sport, sc.League, sc.EID, evt.Timestamp)
+		result := strat.Evaluate(gc, &gu)
 
+		if len(gc.Tickers) == 0 {
+			return
+		}
+
+		e.publishIntents(result.Intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
+
+		// ── MatchStatus ─────────────────────────────────────────
 		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
-		firstLive := !prevHasLive && gc.Game.HasLiveData()
+		status := gu.MatchStatus // parser-derived: "Game Start", "Overtime", or "Live"
+		if scoreChanged {
+			status = "Score Change"
+		} else if status == "Overtime" {
+			if hs, ok := gc.Game.(*hockeyState.HockeyState); ok {
+				if hs.OvertimeNotified {
+					status = "Live"
+				} else {
+					hs.OvertimeNotified = true
+				}
+			}
+		}
 
-		// Training DB writes run last, after all edge/display work.
-		defer e.logSoccerTraining(gc, firstLive, scoreChanged)
-		defer e.logHockeyTraining(gc, firstLive, scoreChanged)
+		if status == "Live" {
+			ds := e.display.Get(gc.EID)
+			if !ds.DisplayedLive {
+				ds.DisplayedLive = true
+				gc.SetMatchStatus("Live")
+			}
+		} else {
+			ds := e.display.Get(gc.EID)
+			if !ds.DisplayedLive {
+				ds.DisplayedLive = true
+			}
+			defer gc.SetMatchStatus(status)
+		}
+
+		// ── Red card callback (soccer) ──────────────────────────
+		if result.RedCardChanged && gc.OnRedCardChange != nil {
+			gc.OnRedCardChange(gc, result.RedCardsHome, result.RedCardsAway)
+		}
+
+		// ── Power play callback (hockey) ────────────────────────
+		if gu.Sport == events.SportHockey {
+			e.handlePowerPlayUpdate(gc, &gu)
+		}
 
 		if !gc.Game.HasPregame() {
 			ds := e.display.Get(gc.EID)
@@ -130,76 +183,64 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 		}
 
 		gc.Game.RecalcEdge(gc.Tickers)
-
-		ds := e.display.Get(gc.EID)
-
-		if !ds.DisplayedLive && (firstLive || scoreChanged) {
-			ds.DisplayedLive = true
-			if isGameStart(gc) {
-				printGame(gc, "GAME-START")
-			} else {
-				printGame(gc, "LIVE")
-			}
-		} else if scoreChanged {
-			printGame(gc, "GOAL")
-		}
-
-		for _, evt := range result.DisplayEvents {
-			if ds.DisplayedLive {
-				printGame(gc, evt)
-			}
-		}
 	})
 
 	return nil
 }
 
-// onGameFinish handles the game-over event.
-//
-// NOTE: Kalshi does NOT remove liquidity or settle markets immediately
-// after a game ends. They wait several minutes and let the market
-// participants handle it organically. Ticker prices continue to update
-// via the WS feed after FINAL and should still be tracked.
-func (e *Engine) onGameFinish(evt events.Event) error {
-	gf, ok := evt.Payload.(events.GameFinishEvent)
+// handlePowerPlayUpdate compares the parsed power play / penalty data
+// against HockeyState and fires gc.OnPowerPlayChange when it transitions.
+func (e *Engine) handlePowerPlayUpdate(gc *game.GameContext, gu *events.GameUpdateEvent) {
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
-		return nil
+		return
 	}
 
-	gc, exists := e.store.Get(gf.Sport, gf.EID)
-	if !exists {
-		return nil
+	var homeOn, awayOn bool
+
+	if gu.PowerPlay {
+		homeDelta := gu.HomePenaltyCount - hs.HomePenaltyCount
+		awayDelta := gu.AwayPenaltyCount - hs.AwayPenaltyCount
+
+		switch {
+		case awayDelta > homeDelta:
+			homeOn = true
+		case homeDelta > awayDelta:
+			awayOn = true
+		default:
+			homeOn = hs.IsHomePowerPlay
+			awayOn = hs.IsAwayPowerPlay
+			if !homeOn && !awayOn {
+				homeOn = true
+			}
+		}
 	}
 
-	gc.Send(func() {
-		ds := e.display.Get(gc.EID)
-		if ds.Finaled {
-			return
+	hs.HomePenaltyCount = gu.HomePenaltyCount
+	hs.AwayPenaltyCount = gu.AwayPenaltyCount
+
+	if homeOn != hs.IsHomePowerPlay || awayOn != hs.IsAwayPowerPlay {
+		hs.IsHomePowerPlay = homeOn
+		hs.IsAwayPowerPlay = awayOn
+		if gc.OnPowerPlayChange != nil {
+			gc.OnPowerPlayChange(gc, homeOn, awayOn)
 		}
-		ds.Finaled = true
-		telemetry.Metrics.ActiveGames.Dec()
+	}
+}
 
-		if len(gc.Tickers) == 0 {
-			return
+func isFinished(period string) bool {
+	low := strings.ToLower(strings.TrimSpace(period))
+	for _, tok := range []string{
+		"finished", "final", "ended", "ft",
+		"after over time", "after overtime", "after ot",
+		"after extra time", "aet",
+		"after penalties", "after pen",
+	} {
+		if low == tok || strings.Contains(low, tok) {
+			return true
 		}
-
-		strat, ok := e.registry.Get(gf.Sport)
-		if !ok {
-			return
-		}
-
-		intents := strat.OnFinish(gc, &gf)
-		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
-
-		defer e.logSoccerTrainingFinish(gc, &gf)
-		defer e.logHockeyTrainingFinish(gc, &gf)
-
-		if ds.DisplayedLive {
-			printGame(gc, "FINAL")
-		}
-	})
-
-	return nil
+	}
+	return false
 }
 
 const edgeDisplayThrottle = 30 * time.Second
@@ -309,13 +350,17 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	return nil
 }
 
-func (e *Engine) createGameContext(sc events.ScoreChangeEvent, gameStartedAt time.Time) *game.GameContext {
-	gs := e.registry.CreateGameState(sc.Sport, sc.EID, sc.League, sc.HomeTeam, sc.AwayTeam)
-	gc := game.NewGameContext(sc.Sport, sc.League, sc.EID, gs)
+func (e *Engine) createGameContext(gu events.GameUpdateEvent, gameStartedAt time.Time) *game.GameContext {
+	gs := e.registry.CreateGameState(gu.Sport, gu.EID, gu.League, gu.HomeTeam, gu.AwayTeam)
+	gc := game.NewGameContext(gu.Sport, gu.League, gu.EID, gs)
 	gc.GameStartedAt = gameStartedAt
 
+	gc.OnMatchStatusChange = e.onMatchStatusChange
+	gc.OnRedCardChange = e.onRedCardChange
+	gc.OnPowerPlayChange = e.onPowerPlayChange
+
 	if e.resolver != nil {
-		go e.resolveTickers(gc, sc, gameStartedAt)
+		go e.resolveTickers(gc, gu, gameStartedAt)
 	}
 
 	return gc
@@ -336,25 +381,6 @@ func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport
 	}
 }
 
-// isGameStart returns true only when the game genuinely appears to be
-// just starting: first period, no goals, and (if we have a real start
-// time) within 5 minutes of puck-drop. AHL/KHL feeds often omit
-// GameStartUTC, so we also look at game state to avoid labelling a
-// 3-0 mid-game as "GAME-START".
-func isGameStart(gc *game.GameContext) bool {
-	if gc.Game.GetHomeScore() > 0 || gc.Game.GetAwayScore() > 0 {
-		return false
-	}
-	p := strings.ToLower(gc.Game.GetPeriod())
-	if p != "" && !strings.Contains(p, "1st") && p != "not started" {
-		return false
-	}
-	if !gc.GameStartedAt.IsZero() && time.Since(gc.GameStartedAt) > 5*time.Minute {
-		return false
-	}
-	return true
-}
-
 func printGame(gc *game.GameContext, eventType string) {
 	switch gc.Sport {
 	case events.SportHockey:
@@ -366,55 +392,113 @@ func printGame(gc *game.GameContext, eventType string) {
 	}
 }
 
-// ── Soccer training DB helpers ───────────────────────────────────────
+// onMatchStatusChange is the callback wired to gc.OnMatchStatusChange.
+// Prints the event and writes a training snapshot.
+func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
+	status := gc.MatchStatus
 
-func (e *Engine) logSoccerTraining(gc *game.GameContext, firstLive, scoreChanged bool) {
-	if e.soccerTraining == nil || gc.Sport != events.SportSoccer {
+	ds := e.display.Get(gc.EID)
+	if !ds.DisplayedLive {
+		ds.DisplayedLive = true
+	}
+	printGame(gc, status)
+
+	switch gc.Sport {
+	case events.SportSoccer:
+		if e.soccerTraining == nil {
+			return
+		}
+		ss, ok := gc.Game.(*soccerState.SoccerState)
+		if !ok {
+			return
+		}
+		if status == "Score Change" && !ss.PinnacleUpdated {
+			return
+		}
+		var outcome *string
+		if status == "Game Finish" {
+			o := regulationOutcome(ss)
+			outcome = &o
+		}
+		row := e.buildSoccerRow(gc, ss, status, outcome)
+		rowID, err := e.soccerTraining.Insert(row)
+		if err != nil {
+			telemetry.Warnf("soccer training: insert failed: %v", err)
+			return
+		}
+		e.spawnBackfill(gc, ss, rowID)
+
+	case events.SportHockey:
+		if e.hockeyTraining == nil {
+			return
+		}
+		hs, ok := gc.Game.(*hockeyState.HockeyState)
+		if !ok {
+			return
+		}
+		if status == "Score Change" && !hs.PinnacleUpdated {
+			return
+		}
+		var outcome *string
+		if status == "Game Finish" {
+			o := hockeyOutcome(hs.HomeScore, hs.AwayScore)
+			outcome = &o
+		}
+		row := e.buildHockeyRow(gc, hs, status, outcome)
+		rowID, err := e.hockeyTraining.Insert(row)
+		if err != nil {
+			telemetry.Warnf("hockey training: insert failed: %v", err)
+			return
+		}
+		e.spawnHockeyBackfill(gc, hs, rowID)
+	}
+}
+
+// onRedCardChange is fired when soccer red card counts change.
+func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
+	printGame(gc, "Red Card")
+
+	if e.soccerTraining == nil {
 		return
 	}
 	ss, ok := gc.Game.(*soccerState.SoccerState)
 	if !ok {
 		return
 	}
-
-	var eventType string
-	if firstLive && isGameStart(gc) {
-		eventType = "Game Start"
-	} else if scoreChanged {
-		eventType = "Score Change"
-	} else {
-		return
-	}
-
-	row := e.buildSoccerRow(gc, ss, eventType, nil)
+	row := e.buildSoccerRow(gc, ss, "Red Card", nil)
 	rowID, err := e.soccerTraining.Insert(row)
 	if err != nil {
 		telemetry.Warnf("soccer training: insert failed: %v", err)
 		return
 	}
-
 	e.spawnBackfill(gc, ss, rowID)
 }
 
-func (e *Engine) logSoccerTrainingFinish(gc *game.GameContext, gf *events.GameFinishEvent) {
-	if e.soccerTraining == nil || gc.Sport != events.SportSoccer {
+// onPowerPlayChange is fired when hockey power play state transitions.
+func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
+	label := "Power Play End"
+	if homeOn || awayOn {
+		label = "Power Play"
+	}
+	printGame(gc, label)
+
+	if e.hockeyTraining == nil {
 		return
 	}
-	ss, ok := gc.Game.(*soccerState.SoccerState)
+	hs, ok := gc.Game.(*hockeyState.HockeyState)
 	if !ok {
 		return
 	}
-
-	outcome := regulationOutcome(ss)
-	row := e.buildSoccerRow(gc, ss, "Game Finish", &outcome)
-	rowID, err := e.soccerTraining.Insert(row)
+	row := e.buildHockeyRow(gc, hs, label, nil)
+	rowID, err := e.hockeyTraining.Insert(row)
 	if err != nil {
-		telemetry.Warnf("soccer training: insert (finish) failed: %v", err)
+		telemetry.Warnf("hockey training: insert failed: %v", err)
 		return
 	}
-
-	e.spawnBackfill(gc, ss, rowID)
+	e.spawnHockeyBackfill(gc, hs, rowID)
 }
+
+// ── Soccer training DB helpers ───────────────────────────────────────
 
 func (e *Engine) buildSoccerRow(gc *game.GameContext, ss *soccerState.SoccerState, eventType string, outcome *string) training.SoccerRow {
 	row := training.SoccerRow{
@@ -503,54 +587,6 @@ func f64Ptr(v float64) *float64 { return &v }
 
 // ── Hockey training DB helpers ───────────────────────────────────────
 
-func (e *Engine) logHockeyTraining(gc *game.GameContext, firstLive, scoreChanged bool) {
-	if e.hockeyTraining == nil || gc.Sport != events.SportHockey {
-		return
-	}
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok {
-		return
-	}
-
-	var eventType string
-	if firstLive && isGameStart(gc) {
-		eventType = "Game Start"
-	} else if scoreChanged {
-		eventType = "Score Change"
-	} else {
-		return
-	}
-
-	row := e.buildHockeyRow(gc, hs, eventType, nil)
-	rowID, err := e.hockeyTraining.Insert(row)
-	if err != nil {
-		telemetry.Warnf("hockey training: insert failed: %v", err)
-		return
-	}
-
-	e.spawnHockeyBackfill(gc, hs, rowID)
-}
-
-func (e *Engine) logHockeyTrainingFinish(gc *game.GameContext, gf *events.GameFinishEvent) {
-	if e.hockeyTraining == nil || gc.Sport != events.SportHockey {
-		return
-	}
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok {
-		return
-	}
-
-	outcome := hockeyOutcome(gf.HomeScore, gf.AwayScore)
-	row := e.buildHockeyRow(gc, hs, "Game Finish", &outcome)
-	rowID, err := e.hockeyTraining.Insert(row)
-	if err != nil {
-		telemetry.Warnf("hockey training: insert (finish) failed: %v", err)
-		return
-	}
-
-	e.spawnHockeyBackfill(gc, hs, rowID)
-}
-
 func (e *Engine) buildHockeyRow(gc *game.GameContext, hs *hockeyState.HockeyState, eventType string, outcome *string) training.HockeyRow {
 	row := training.HockeyRow{
 		Ts:            time.Now(),
@@ -565,6 +601,8 @@ func (e *Engine) buildHockeyRow(gc *game.GameContext, hs *hockeyState.HockeyStat
 		AwayScore:     hs.AwayScore,
 		Period:        hs.Period,
 		TimeRemain:    hs.TimeLeft,
+		HomePowerPlay: hs.IsHomePowerPlay,
+		AwayPowerPlay: hs.IsAwayPowerPlay,
 		ActualOutcome: outcome,
 	}
 
@@ -623,18 +661,23 @@ func hockeyOutcome(homeScore, awayScore int) string {
 }
 
 // resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
-func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent, gameStartedAt time.Time) {
-	resolved := e.resolver.Resolve(context.Background(), sc.Sport, sc.HomeTeam, sc.AwayTeam, gameStartedAt)
+func (e *Engine) resolveTickers(gc *game.GameContext, gu events.GameUpdateEvent, gameStartedAt time.Time) {
+	resolved := e.resolver.Resolve(context.Background(), gu.Sport, gu.HomeTeam, gu.AwayTeam, gameStartedAt)
 	if resolved == nil {
-		telemetry.Debugf("ticker: no match for %s %s vs %s", sc.Sport, sc.HomeTeam, sc.AwayTeam)
+		telemetry.Debugf("ticker: no match for %s %s vs %s", gu.Sport, gu.HomeTeam, gu.AwayTeam)
 		return
 	}
 
 	allTickers := resolved.AllTickers()
 	if e.subscriber != nil {
 		if err := e.subscriber.SubscribeTickers(allTickers); err != nil {
-			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", sc.HomeTeam, sc.AwayTeam, err)
+			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", gu.HomeTeam, gu.AwayTeam, err)
 		}
+	}
+
+	initialStatus := gu.MatchStatus
+	if initialStatus == "" {
+		initialStatus = "Live"
 	}
 
 	gc.Send(func() {
@@ -655,20 +698,10 @@ func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent
 			e.store.RegisterTicker(t, gc)
 		}
 
-		if !gc.Game.HasPregame() {
-			return
-		}
+		gc.SetMatchStatus(initialStatus)
 
-		gc.Game.RecalcEdge(gc.Tickers)
-
-		ds := e.display.Get(gc.EID)
-		if !ds.DisplayedLive && gc.Game.HasLiveData() {
-			ds.DisplayedLive = true
-			if isGameStart(gc) {
-				printGame(gc, "GAME-START")
-			} else {
-				printGame(gc, "LIVE")
-			}
+		if gc.Game.HasPregame() {
+			gc.Game.RecalcEdge(gc.Tickers)
 		}
 	})
 }

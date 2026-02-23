@@ -90,13 +90,9 @@ func (h *Handler) handle(sport events.Sport) http.HandlerFunc {
 		telemetry.Debugf("goalserve: %s webhook received  raw_events=%d parsed=%d  bytes=%d",
 			sport, len(payload.Events), len(evts), len(body))
 		for _, evt := range evts {
-			if sc, ok := evt.Payload.(events.ScoreChangeEvent); ok {
-				telemetry.Debugf("  [%s] eid=%s  %s vs %s  %d-%d  %s",
-					sc.Sport, sc.EID, sc.AwayTeam, sc.HomeTeam, sc.AwayScore, sc.HomeScore, sc.Period)
-			}
-			if gf, ok := evt.Payload.(events.GameFinishEvent); ok {
-				telemetry.Debugf("  [%s] eid=%s  %s vs %s  %d-%d  FINAL (%s)",
-					gf.Sport, gf.EID, gf.AwayTeam, gf.HomeTeam, gf.AwayScore, gf.HomeScore, gf.FinalState)
+			if gu, ok := evt.Payload.(events.GameUpdateEvent); ok {
+				telemetry.Debugf("  [%s] eid=%s  %s vs %s  %d-%d  %s  status=%s",
+					gu.Sport, gu.EID, gu.AwayTeam, gu.HomeTeam, gu.AwayScore, gu.HomeScore, gu.Period, gu.MatchStatus)
 			}
 			h.bus.Publish(evt)
 		}

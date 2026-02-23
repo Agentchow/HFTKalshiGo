@@ -76,90 +76,101 @@ func (s *Strategy) loadPregameWithRetry() {
 	telemetry.Errorf("pregame: all %d startup attempts failed — proceeding without pregame data", startupMaxAttempts)
 }
 
-func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) strategy.EvalResult {
+func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) strategy.EvalResult {
 	ss, ok := gc.Game.(*soccerState.SoccerState)
 	if !ok {
 		return strategy.EvalResult{}
 	}
 
-	var displayEvents []string
-
-	// Apply pregame odds on first encounter.
 	if s.pregame != nil {
 		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
-			if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
+			if s.applyPregame(ss, gu.HomeTeam, gu.AwayTeam) {
 				ss.PregameApplied = true
 				s.pregameApplied.Store(gc.EID, true)
-				displayEvents = append(displayEvents, "LIVE")
 			}
 		}
 	}
 
-	// Snapshot red cards before state update.
 	prevHomeRC, prevAwayRC := ss.HomeRedCards, ss.AwayRedCards
+
+	// Always update red cards before the score-change guard so they
+	// are never silently dropped on a no-score-change webhook.
+	if gu.HomeRedCards > 0 || gu.AwayRedCards > 0 {
+		ss.UpdateRedCards(gu.HomeRedCards, gu.AwayRedCards)
+	}
+	rcChanged := ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC
 
 	tracked := len(gc.Tickers) > 0
 
 	if ss.HasLiveData() {
-		result := ss.CheckScoreDrop(sc.HomeScore, sc.AwayScore, s.scoreDropConfirmSec)
+		result := ss.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
 		switch result {
 		case "new_drop":
 			if tracked {
 				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
-					result, ss.AwayTeam, ss.HomeTeam, sc.EID,
-					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+					result, ss.AwayTeam, ss.HomeTeam, gu.EID,
+					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			}
 			s.lastPendingLog = time.Now()
-			return strategy.EvalResult{DisplayEvents: displayEvents}
+			return strategy.EvalResult{
+				RedCardChanged: rcChanged,
+				RedCardsHome:   ss.HomeRedCards,
+				RedCardsAway:   ss.AwayRedCards,
+			}
 		case "pending":
 			if tracked && time.Since(s.lastPendingLog) >= 20*time.Second {
 				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
-					result, ss.AwayTeam, ss.HomeTeam, sc.EID,
-					ss.GetHomeScore(), ss.GetAwayScore(), sc.HomeScore, sc.AwayScore)
+					result, ss.AwayTeam, ss.HomeTeam, gu.EID,
+					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return strategy.EvalResult{DisplayEvents: displayEvents}
+			return strategy.EvalResult{
+				RedCardChanged: rcChanged,
+				RedCardsHome:   ss.HomeRedCards,
+				RedCardsAway:   ss.AwayRedCards,
+			}
 		case "confirmed":
 			if tracked {
 				telemetry.Infof("soccer: overturn confirmed for %s @ %s [%s] -> %d-%d",
-					ss.AwayTeam, ss.HomeTeam, sc.EID, sc.HomeScore, sc.AwayScore)
+					ss.AwayTeam, ss.HomeTeam, gu.EID, gu.HomeScore, gu.AwayScore)
 			}
 		}
 	}
 
-	changed := ss.UpdateScore(sc.HomeScore, sc.AwayScore, sc.Period, sc.TimeLeft)
+	changed := ss.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	if !changed {
-		return strategy.EvalResult{DisplayEvents: displayEvents}
+		return strategy.EvalResult{
+			RedCardChanged: rcChanged,
+			RedCardsHome:   ss.HomeRedCards,
+			RedCardsAway:   ss.AwayRedCards,
+		}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	if sc.HomeWinPct != nil && sc.DrawPct != nil && sc.AwayWinPct != nil {
-		h := *sc.HomeWinPct * 100
-		d := *sc.DrawPct * 100
-		a := *sc.AwayWinPct * 100
+	ss.PinnacleUpdated = false
+	if gu.HomeWinPct != nil && gu.DrawPct != nil && gu.AwayWinPct != nil {
+		h := *gu.HomeWinPct * 100
+		d := *gu.DrawPct * 100
+		a := *gu.AwayWinPct * 100
+		ss.PinnacleUpdated = ss.PinnacleHomePct == nil || *ss.PinnacleHomePct != h
 		ss.PinnacleHomePct = &h
 		ss.PinnacleDrawPct = &d
 		ss.PinnacleAwayPct = &a
 	}
 
-	if sc.HomeRedCards > 0 || sc.AwayRedCards > 0 {
-		ss.UpdateRedCards(sc.HomeRedCards, sc.AwayRedCards)
+	return strategy.EvalResult{
+		RedCardChanged: rcChanged,
+		RedCardsHome:   ss.HomeRedCards,
+		RedCardsAway:   ss.AwayRedCards,
 	}
-
-	if ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC {
-		displayEvents = append(displayEvents, "RED-CARD")
-	}
-
-	// TODO: plug in Poisson model and 6-way edge evaluation
-	return strategy.EvalResult{DisplayEvents: displayEvents}
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return nil
 }
 
-func (s *Strategy) OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent {
+func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent {
 	ss, ok := gc.Game.(*soccerState.SoccerState)
 	if !ok {
 		return nil

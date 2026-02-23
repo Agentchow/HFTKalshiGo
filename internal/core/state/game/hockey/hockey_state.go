@@ -32,6 +32,13 @@ type HockeyState struct {
 	// Pinnacle odds cache
 	PinnacleHomePct *float64 // 0–100
 	PinnacleAwayPct *float64 // 0–100
+	PinnacleUpdated bool     // true when Pinnacle odds changed in the latest Evaluate
+
+	// Power play state. Updated from GoalServe STS field every webhook.
+	IsHomePowerPlay  bool
+	IsAwayPowerPlay  bool
+	HomePenaltyCount int // cumulative, from STS Penalties= field
+	AwayPenaltyCount int
 
 	PregameApplied bool
 	PregameG0      *float64 // expected total goals from O/U market, nil if unavailable
@@ -42,6 +49,8 @@ type HockeyState struct {
 	EdgeAwayNo  float64
 
 	game.ScoreDropTracker
+
+	OvertimeNotified bool
 
 	hasLiveData    bool
 	orderedSides   map[scoreKey]bool
@@ -77,8 +86,8 @@ func (h *HockeyState) GetHomeScore() int         { return h.HomeScore }
 func (h *HockeyState) GetAwayScore() int         { return h.AwayScore }
 func (h *HockeyState) GetPeriod() string         { return h.Period }
 func (h *HockeyState) GetTimeRemaining() float64 { return h.TimeLeft }
-func (h *HockeyState) HasLiveData() bool         { return h.hasLiveData }
-func (h *HockeyState) HasPregame() bool          { return h.PregameApplied }
+func (h *HockeyState) HasLiveData() bool  { return h.hasLiveData }
+func (h *HockeyState) HasPregame() bool   { return h.PregameApplied }
 
 func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 

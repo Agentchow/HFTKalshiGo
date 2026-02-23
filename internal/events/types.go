@@ -1,7 +1,8 @@
 package events
 
-// ScoreChangeEvent is published when GoalServe reports a score update.
-type ScoreChangeEvent struct {
+// GameUpdateEvent is published on every GoalServe/Genius webhook for a game.
+// Covers live updates, score changes, and game finishes in a single type.
+type GameUpdateEvent struct {
 	EID       string  `json:"eid"`
 	Sport     Sport   `json:"sport"`
 	League    string  `json:"league"`
@@ -12,6 +13,11 @@ type ScoreChangeEvent struct {
 	Period    string  `json:"period"` // "1st Period", "2nd Half", "Q3", etc.
 	TimeLeft  float64 `json:"time_left"`
 	Overturn  bool    `json:"overturn,omitempty"` // true if this score was confirmed after a drop
+
+	// MatchStatus is inferred by the parser from the webhook snapshot.
+	// Values: "Game Start", "Live", "Overtime".
+	// The engine overrides to "Score Change" or "Game Finish" when appropriate.
+	MatchStatus string `json:"match_status,omitempty"`
 
 	// Scheduled kick-off / puck-drop from GoalServe (Unix UTC seconds).
 	// Zero when GoalServe doesn't provide it (some hockey feeds).
@@ -25,6 +31,11 @@ type ScoreChangeEvent struct {
 	// Soccer red card counts from the current webhook snapshot.
 	HomeRedCards int `json:"home_red_cards,omitempty"`
 	AwayRedCards int `json:"away_red_cards,omitempty"`
+
+	// Hockey power play / penalty data parsed from the STS field.
+	PowerPlay        bool `json:"power_play,omitempty"`
+	HomePenaltyCount int  `json:"home_penalty_count,omitempty"`
+	AwayPenaltyCount int  `json:"away_penalty_count,omitempty"`
 }
 
 // MarketEvent is published when the Kalshi WebSocket reports a price change.
@@ -52,25 +63,6 @@ type OrderIntent struct {
 	// Context for idempotency: orders are deduped per (ticker, home_score, away_score).
 	HomeScore int `json:"home_score"`
 	AwayScore int `json:"away_score"`
-}
-
-// GameFinishEvent is published when a game reaches final status.
-type GameFinishEvent struct {
-	EID        string `json:"eid"`
-	Sport      Sport  `json:"sport"`
-	League     string `json:"league"`
-	HomeTeam   string `json:"home_team"`
-	AwayTeam   string `json:"away_team"`
-	HomeScore  int    `json:"home_score"`
-	AwayScore  int    `json:"away_score"`
-	FinalState string `json:"final_state"` // "Finished", "After Overtime", etc.
-}
-
-// RedCardEvent is soccer-specific.
-type RedCardEvent struct {
-	EID                   string  `json:"eid"`
-	Team                  int     `json:"team"` // 1=home, 2=away
-	MinutesRemainingAtRed float64 `json:"minutes_remaining_at_red"`
 }
 
 // WSStatusEvent signals Kalshi WebSocket connect/disconnect to sport processes.

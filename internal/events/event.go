@@ -26,9 +26,7 @@ type EventType string
 
 const (
 	// GoalServe Webhook/Genius Websocket Events
-	EventScoreChange EventType = "score_change"
-	EventRedCard     EventType = "red_card"
-	EventGameFinish  EventType = "game_finish"
+	EventGameUpdate EventType = "game_update"
 	// Kalshi Ticker Events
 	EventMarketData EventType = "market_data"
 	// Kalshi WebSocket status

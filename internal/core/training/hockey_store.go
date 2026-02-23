@@ -28,6 +28,9 @@ type HockeyRow struct {
 	Period    string
 	TimeRemain float64
 
+	HomePowerPlay bool
+	AwayPowerPlay bool
+
 	PregameHomePct *float64
 	PregameAwayPct *float64
 	PregameG0      *float64
@@ -84,6 +87,9 @@ func OpenHockeyStore(path string) (*HockeyStore, error) {
 			period              TEXT,
 			time_remain         REAL,
 
+			home_power_play     INTEGER DEFAULT 0,
+			away_power_play     INTEGER DEFAULT 0,
+
 			pregame_home_pct    REAL,
 			pregame_away_pct    REAL,
 			pregame_g0          REAL,
@@ -104,6 +110,10 @@ func OpenHockeyStore(path string) (*HockeyStore, error) {
 			return nil, fmt.Errorf("init schema (%s): %w", stmt, err)
 		}
 	}
+
+	// Migrations: add columns if missing (errors ignored for existing columns).
+	db.Exec(`ALTER TABLE training_snapshots ADD COLUMN home_power_play INTEGER DEFAULT 0`)
+	db.Exec(`ALTER TABLE training_snapshots ADD COLUMN away_power_play INTEGER DEFAULT 0`)
 
 	var size int64
 	row := db.QueryRow(`SELECT COALESCE(page_count * page_size, 0) FROM pragma_page_count(), pragma_page_size()`)
@@ -132,9 +142,10 @@ func (s *HockeyStore) Insert(row HockeyRow) (int64, error) {
 		`INSERT INTO training_snapshots (
 			ts, game_id, league, home_team, away_team, norm_home, norm_away,
 			event_type, home_score, away_score, period, time_remain,
+			home_power_play, away_power_play,
 			pregame_home_pct, pregame_away_pct, pregame_g0,
 			actual_outcome
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		row.Ts.UTC().Format(time.RFC3339Nano),
 		row.GameID,
 		row.League,
@@ -147,6 +158,8 @@ func (s *HockeyStore) Insert(row HockeyRow) (int64, error) {
 		row.AwayScore,
 		row.Period,
 		row.TimeRemain,
+		boolToInt(row.HomePowerPlay),
+		boolToInt(row.AwayPowerPlay),
 		round3(row.PregameHomePct),
 		round3(row.PregameAwayPct),
 		round3(row.PregameG0),
@@ -229,6 +242,13 @@ func (s *HockeyStore) evict() {
 	}
 
 	s.refreshSize()
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (s *HockeyStore) Close() error {

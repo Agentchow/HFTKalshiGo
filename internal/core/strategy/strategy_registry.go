@@ -9,23 +9,24 @@ import (
 )
 
 // EvalResult is returned by Evaluate. It carries order intents plus
-// optional display event names (e.g. "RED-CARD") that the engine
-// should trigger after the standard LIVE/GOAL/GAME-START display logic.
+// flags the engine uses to fire sport-specific change callbacks.
 type EvalResult struct {
-	Intents       []events.OrderIntent
-	DisplayEvents []string
+	Intents        []events.OrderIntent
+	RedCardChanged bool
+	RedCardsHome   int
+	RedCardsAway   int
 }
 
 // Strategy is the interface each sport must implement.
 type Strategy interface {
-	// Evaluate is called on each score change.
-	Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) EvalResult
+	// Evaluate is called on each game update (live webhook).
+	Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) EvalResult
 
 	// OnPriceUpdate is called when a Kalshi market price changes.
 	OnPriceUpdate(gc *game.GameContext) []events.OrderIntent
 
 	// OnFinish is called when a game ends. Returns "slam" orders for settled markets.
-	OnFinish(gc *game.GameContext, gf *events.GameFinishEvent) []events.OrderIntent
+	OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent
 
 	// HasSignificantEdge returns true when the game has a model-vs-market
 	// edge worth displaying. Used by the engine for throttled EDGE prints.

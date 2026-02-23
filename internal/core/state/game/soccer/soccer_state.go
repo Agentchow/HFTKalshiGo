@@ -51,6 +51,7 @@ type SoccerState struct {
 	EdgeAwayNo  float64
 
 	ExtraTimeSettlesML bool
+	PregameApplied     bool
 
 	game.ScoreDropTracker
 

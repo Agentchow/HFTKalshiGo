@@ -61,6 +61,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, sc *events.ScoreChangeEvent) s
 	if s.pregame != nil {
 		if _, applied := s.pregameApplied.Load(gc.EID); !applied {
 			if s.applyPregame(ss, sc.HomeTeam, sc.AwayTeam) {
+				ss.PregameApplied = true
 				s.pregameApplied.Store(gc.EID, true)
 				displayEvents = append(displayEvents, "LIVE")
 			}

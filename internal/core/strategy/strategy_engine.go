@@ -8,8 +8,10 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
+	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
+	"github.com/charleschow/hft-trading/internal/core/training"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -34,6 +36,15 @@ type Engine struct {
 	subscriber TickerSubscriber
 
 	kalshiWSUp atomic.Bool
+
+	soccerTraining *training.Store
+	backfillDelay  time.Duration
+}
+
+// SetSoccerTraining enables soccer training DB logging.
+func (e *Engine) SetSoccerTraining(s *training.Store, backfillDelaySec int) {
+	e.soccerTraining = s
+	e.backfillDelay = time.Duration(backfillDelaySec) * time.Second
 }
 
 func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver, subscriber TickerSubscriber) *Engine {
@@ -87,6 +98,8 @@ func (e *Engine) onScoreChange(evt events.Event) error {
 
 		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
 		firstLive := !prevHasLive && gc.Game.HasLiveData()
+
+		e.logSoccerTraining(gc, firstLive, scoreChanged)
 
 		if len(gc.Tickers) == 0 {
 			return
@@ -149,6 +162,8 @@ func (e *Engine) onGameFinish(evt events.Event) error {
 		intents := strat.OnFinish(gc, &gf)
 		e.publishIntents(intents, gf.Sport, gf.League, gf.EID, evt.Timestamp)
 
+		e.logSoccerTrainingFinish(gc, &gf)
+
 		if ds.DisplayedLive {
 			printGame(gc, "FINAL")
 		}
@@ -203,6 +218,7 @@ func (e *Engine) onMarketData(evt events.Event) error {
 			if me.NoBid >= 0 {
 				td.NoBid = me.NoBid
 			}
+			// NEVER derive NO prices — use raw values from Kalshi WS only.
 			if me.Volume > 0 {
 				td.Volume = me.Volume
 			}
@@ -323,6 +339,141 @@ func printGame(gc *game.GameContext, eventType string) {
 		display.PrintFootball(gc, eventType)
 	}
 }
+
+// ── Soccer training DB helpers ───────────────────────────────────────
+
+func (e *Engine) logSoccerTraining(gc *game.GameContext, firstLive, scoreChanged bool) {
+	if e.soccerTraining == nil || gc.Sport != events.SportSoccer {
+		return
+	}
+	ss, ok := gc.Game.(*soccerState.SoccerState)
+	if !ok {
+		return
+	}
+
+	var eventType string
+	if firstLive && isGameStart(gc) {
+		eventType = "Game Start"
+	} else if scoreChanged {
+		eventType = "Score Change"
+	} else {
+		return
+	}
+
+	row := e.buildSoccerRow(gc, ss, eventType, nil)
+	rowID, err := e.soccerTraining.Insert(row)
+	if err != nil {
+		telemetry.Warnf("soccer training: insert failed: %v", err)
+		return
+	}
+
+	e.spawnBackfill(gc, ss, rowID)
+}
+
+func (e *Engine) logSoccerTrainingFinish(gc *game.GameContext, gf *events.GameFinishEvent) {
+	if e.soccerTraining == nil || gc.Sport != events.SportSoccer {
+		return
+	}
+	ss, ok := gc.Game.(*soccerState.SoccerState)
+	if !ok {
+		return
+	}
+
+	outcome := regulationOutcome(ss)
+	row := e.buildSoccerRow(gc, ss, "Game Finish", &outcome)
+	rowID, err := e.soccerTraining.Insert(row)
+	if err != nil {
+		telemetry.Warnf("soccer training: insert (finish) failed: %v", err)
+		return
+	}
+
+	e.spawnBackfill(gc, ss, rowID)
+}
+
+func (e *Engine) buildSoccerRow(gc *game.GameContext, ss *soccerState.SoccerState, eventType string, outcome *string) training.SoccerRow {
+	row := training.SoccerRow{
+		Ts:            time.Now(),
+		GameID:        gc.EID,
+		League:        gc.League,
+		HomeTeam:      ss.HomeTeam,
+		AwayTeam:      ss.AwayTeam,
+		NormHome:      ticker.Normalize(ss.HomeTeam, ticker.SoccerAliases),
+		NormAway:      ticker.Normalize(ss.AwayTeam, ticker.SoccerAliases),
+		Half:          ss.Half,
+		EventType:     eventType,
+		HomeScore:     ss.HomeScore,
+		AwayScore:     ss.AwayScore,
+		TimeRemain:    ss.TimeLeft,
+		RedCardsHome:  ss.HomeRedCards,
+		RedCardsAway:  ss.AwayRedCards,
+		ActualOutcome: outcome,
+	}
+
+	if ss.PregameApplied {
+		row.PregameHomePct = f64Ptr(ss.HomeWinPct)
+		row.PregameDrawPct = f64Ptr(ss.DrawPct)
+		row.PregameAwayPct = f64Ptr(ss.AwayWinPct)
+		row.PregameG0 = f64Ptr(ss.G0)
+	}
+
+	return row
+}
+
+func (e *Engine) spawnBackfill(gc *game.GameContext, ss *soccerState.SoccerState, rowID int64) {
+	delay := e.backfillDelay
+	go func() {
+		time.Sleep(delay)
+		gc.Send(func() {
+			odds := training.OddsBackfill{}
+
+			if ss.PinnacleHomePct != nil {
+				v := *ss.PinnacleHomePct / 100.0
+				odds.PinnacleHomePctL = &v
+			}
+			if ss.PinnacleDrawPct != nil {
+				v := *ss.PinnacleDrawPct / 100.0
+				odds.PinnacleDrawPctL = &v
+			}
+			if ss.PinnacleAwayPct != nil {
+				v := *ss.PinnacleAwayPct / 100.0
+				odds.PinnacleAwayPctL = &v
+			}
+
+			if gc.KalshiConnected && len(gc.Tickers) > 0 {
+				if td, ok := gc.Tickers[ss.HomeTicker]; ok && td.YesAsk >= 0 {
+					v := td.YesAsk / 100.0
+					odds.KalshiHomePctL = &v
+				}
+				if td, ok := gc.Tickers[ss.DrawTicker]; ok && td.YesAsk >= 0 {
+					v := td.YesAsk / 100.0
+					odds.KalshiDrawPctL = &v
+				}
+				if td, ok := gc.Tickers[ss.AwayTicker]; ok && td.YesAsk >= 0 {
+					v := td.YesAsk / 100.0
+					odds.KalshiAwayPctL = &v
+				}
+			}
+
+			e.soccerTraining.BackfillOdds(rowID, odds)
+		})
+	}()
+}
+
+// regulationOutcome returns the 1X2 result based on the regulation-time
+// score, which is what Kalshi settles on. SoccerState freezes the
+// regulation score when the game transitions to extra time or penalties.
+func regulationOutcome(ss *soccerState.SoccerState) string {
+	diff := ss.RegulationGoalDiff()
+	if diff > 0 {
+		return "home_win"
+	}
+	if diff < 0 {
+		return "away_win"
+	}
+	return "draw"
+}
+
+func f64Ptr(v float64) *float64 { return &v }
 
 // resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
 func (e *Engine) resolveTickers(gc *game.GameContext, sc events.ScoreChangeEvent, gameStartedAt time.Time) {

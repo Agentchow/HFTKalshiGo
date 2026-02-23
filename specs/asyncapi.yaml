@@ -1022,8 +1022,6 @@ components:
             msg:
               market_ticker: "FED-23DEC-T3.00"
               price: 48
-              yes_bid: 45
-              yes_ask: 53
               price_dollars: "0.480"
               yes_bid_dollars: "0.345"
               no_bid_dollars: "0.655"
@@ -1273,8 +1271,6 @@ components:
               rfq_creator_id: "comm_abc123"
               market_ticker: "FED-23DEC-T3.00"
               event_ticker: "FED-23DEC"
-              yes_bid: 35
-              no_bid: 65
               yes_bid_dollars: "0.35"
               no_bid_dollars: "0.65"
               yes_contracts_offered: 100
@@ -1305,8 +1301,6 @@ components:
               rfq_creator_id: "comm_abc123"
               market_ticker: "FED-23DEC-T3.00"
               event_ticker: "FED-23DEC"
-              yes_bid: 35
-              no_bid: 65
               yes_bid_dollars: "0.35"
               no_bid_dollars: "0.65"
               accepted_side: "yes"
@@ -1750,23 +1744,13 @@ components:
           $ref: '#/components/schemas/subscriptionId'
         msg:
           type: object
-          required: ["market_ticker", "price", "yes_bid", "yes_ask", "volume", "open_interest", "dollar_volume", "dollar_open_interest", "ts"]
+          required: ["market_ticker", "price", "volume", "open_interest", "dollar_volume", "dollar_open_interest", "ts"]
           properties:
             market_ticker:
               $ref: '#/components/schemas/marketTicker'
             price:
               type: integer
               description: Last traded price in cents (1-99)
-              minimum: 1
-              maximum: 99
-            yes_bid:
-              type: integer
-              description: Best bid price for yes side
-              minimum: 1
-              maximum: 99
-            yes_ask:
-              type: integer
-              description: Best ask price for yes side
               minimum: 1
               maximum: 99
             price_dollars:
@@ -2249,7 +2233,7 @@ components:
           $ref: '#/components/schemas/subscriptionId'
         msg:
           type: object
-          required: ["quote_id", "rfq_id", "quote_creator_id", "rfq_creator_id", "market_ticker", "yes_bid", "no_bid", "yes_bid_dollars", "no_bid_dollars", "created_ts"]
+          required: ["quote_id", "rfq_id", "quote_creator_id", "rfq_creator_id", "market_ticker", "yes_bid_dollars", "no_bid_dollars", "created_ts"]
           properties:
             quote_id:
               type: string
@@ -2269,14 +2253,6 @@ components:
             event_ticker:
               type: string
               description: Event ticker (optional)
-            yes_bid:
-              type: integer
-              description: Yes side bid price in cents
-              format: int32
-            no_bid:
-              type: integer
-              description: No side bid price in cents
-              format: int32
             yes_bid_dollars:
               type: string
               description: Yes side bid price in dollars
@@ -2320,7 +2296,7 @@ components:
           $ref: '#/components/schemas/subscriptionId'
         msg:
           type: object
-          required: ["quote_id", "rfq_id", "quote_creator_id", "rfq_creator_id", "market_ticker", "yes_bid", "no_bid", "yes_bid_dollars", "no_bid_dollars"]
+          required: ["quote_id", "rfq_id", "quote_creator_id", "rfq_creator_id", "market_ticker", "yes_bid_dollars", "no_bid_dollars"]
           properties:
             quote_id:
               type: string
@@ -2340,14 +2316,6 @@ components:
             event_ticker:
               type: string
               description: Event ticker (optional)
-            yes_bid:
-              type: integer
-              description: Yes side bid price in cents
-              format: int32
-            no_bid:
-              type: integer
-              description: No side bid price in cents
-              format: int32
             yes_bid_dollars:
               type: string
               description: Yes side bid price in dollars

@@ -48,6 +48,10 @@ type Config struct {
 	// Tickers
 	TickersConfigDir string // path to directory containing {Sport}/tickers_config.json files
 
+	// Training
+	SoccerTrainingDBPath    string
+	TrainingBackfillDelaySec int
+
 	// Telemetry
 	LogLevel string
 }
@@ -99,6 +103,9 @@ func Load() *Config {
 		RateDivisor: envInt("RATE_DIVISOR", 1),
 
 		TickersConfigDir: envStr("TICKERS_CONFIG_DIR", "configs"),
+
+		SoccerTrainingDBPath:    envStr("SOCCER_TRAINING_DB_PATH", "data/soccer_training.db"),
+		TrainingBackfillDelaySec: envInt("TRAINING_BACKFILL_DELAY_SEC", 10),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

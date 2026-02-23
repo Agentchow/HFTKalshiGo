@@ -1,0 +1,9 @@
+---
+description: Kalshi market price handling rules
+alwaysApply: true
+---
+
+# Kalshi Price Rules
+
+- NEVER derive NO prices from YES prices (or vice versa). Always use the raw values received from the Kalshi WebSocket or REST API.
+- YES and NO order books on Kalshi are independent. Do not synthesize, compute, or infer one side from the other.

@@ -55,6 +55,11 @@ func parseTickerUpdate(raw json.RawMessage) []events.Event {
 		return nil
 	}
 
+	if t.NoAskDollars != "" || t.NoBidDollars != "" {
+		telemetry.Infof("kalshi_ws DIAG: ticker=%s no_ask_dollars=%q no_bid_dollars=%q raw=%s",
+			t.MarketTicker, t.NoAskDollars, t.NoBidDollars, string(raw))
+	}
+
 	me := events.MarketEvent{
 		Ticker: t.MarketTicker,
 		YesAsk: dollarsToCents(t.YesAskDollars),

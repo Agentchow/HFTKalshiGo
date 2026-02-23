@@ -14,11 +14,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func round3(v *float64) *float64 {
+func round5(v *float64) *float64 {
 	if v == nil {
 		return nil
 	}
-	r := math.Round(*v*10000) / 10000
+	r := math.Round(*v*100000) / 100000
 	return &r
 }
 
@@ -178,10 +178,10 @@ func (s *Store) Insert(row SoccerRow) (int64, error) {
 		row.TimeRemain,
 		row.RedCardsHome,
 		row.RedCardsAway,
-		round3(row.PregameHomePct),
-		round3(row.PregameDrawPct),
-		round3(row.PregameAwayPct),
-		round3(row.PregameG0),
+		round5(row.PregameHomePct),
+		round5(row.PregameDrawPct),
+		round5(row.PregameAwayPct),
+		round5(row.PregameG0),
 		row.ActualOutcome,
 	)
 	if err != nil {
@@ -218,12 +218,12 @@ func (s *Store) BackfillOdds(rowID int64, odds OddsBackfill) {
 				kalshi_draw_pct_l   = ?,
 				kalshi_away_pct_l   = ?
 			WHERE id = ?`,
-			round3(odds.PinnacleHomePctL),
-			round3(odds.PinnacleDrawPctL),
-			round3(odds.PinnacleAwayPctL),
-			round3(odds.KalshiHomePctL),
-			round3(odds.KalshiDrawPctL),
-			round3(odds.KalshiAwayPctL),
+		round5(odds.PinnacleHomePctL),
+		round5(odds.PinnacleDrawPctL),
+		round5(odds.PinnacleAwayPctL),
+		round5(odds.KalshiHomePctL),
+		round5(odds.KalshiDrawPctL),
+		round5(odds.KalshiAwayPctL),
 			rowID,
 		)
 		if err != nil {

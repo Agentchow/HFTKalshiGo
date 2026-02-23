@@ -160,9 +160,9 @@ func (s *HockeyStore) Insert(row HockeyRow) (int64, error) {
 		row.TimeRemain,
 		boolToInt(row.HomePowerPlay),
 		boolToInt(row.AwayPowerPlay),
-		round3(row.PregameHomePct),
-		round3(row.PregameAwayPct),
-		round3(row.PregameG0),
+		round5(row.PregameHomePct),
+		round5(row.PregameAwayPct),
+		round5(row.PregameG0),
 		row.ActualOutcome,
 	)
 	if err != nil {
@@ -195,10 +195,10 @@ func (s *HockeyStore) BackfillOdds(rowID int64, odds HockeyOddsBackfill) {
 				kalshi_home_pct_l   = ?,
 				kalshi_away_pct_l   = ?
 			WHERE id = ?`,
-			round3(odds.PinnacleHomePctL),
-			round3(odds.PinnacleAwayPctL),
-			round3(odds.KalshiHomePctL),
-			round3(odds.KalshiAwayPctL),
+		round5(odds.PinnacleHomePctL),
+		round5(odds.PinnacleAwayPctL),
+		round5(odds.KalshiHomePctL),
+		round5(odds.KalshiAwayPctL),
 			rowID,
 		)
 		if err != nil {

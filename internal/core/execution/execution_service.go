@@ -14,7 +14,7 @@ import (
 var _ OrderPlacer = (*kalshi_http.Client)(nil)
 
 // Service subscribes to OrderIntent events, applies risk checks via the
-// lane router, and places orders through the Kalshi HTTP client.
+// lane router, and places orders through the Kalshi batch HTTP endpoint.
 //
 // Order placement is async — the HTTP call runs on a short-lived goroutine
 // so it never blocks the game's event loop. The fill result is fed back
@@ -40,94 +40,115 @@ func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameSto
 }
 
 // onOrderIntent is called on the game's goroutine (via the synchronous bus).
-// It checks per-game and per-sport spending caps and dedup,
-// then spawns a goroutine for the HTTP call.
+// The payload is now []OrderIntent (a batch). It checks per-game and per-sport
+// spending caps and dedup for each intent, then spawns a goroutine for the
+// batch HTTP call.
 func (s *Service) onOrderIntent(evt events.Event) error {
-	intent, ok := evt.Payload.(events.OrderIntent)
+	intents, ok := evt.Payload.([]events.OrderIntent)
 	if !ok {
 		return nil
 	}
 
-	lane := s.router.Route(intent.Sport, intent.League)
-	if lane == nil {
-		telemetry.Warnf("execution: no lane for sport=%s league=%s", intent.Sport, intent.League)
-		return nil
-	}
-
-	orderCents := int(intent.LimitPct)
-
-	// Per-game spending cap (safe to read — we're on the game's goroutine).
-	gc, gcOK := s.gameStore.Get(intent.Sport, intent.GameID)
-	if gcOK && lane.MaxGameCents() > 0 {
-		if gc.TotalExposureCents()+orderCents > lane.MaxGameCents() {
-			telemetry.Infof("execution: per-game cap reached ticker=%s game=%s spent=%d limit=%d",
-				intent.Ticker, intent.GameID, gc.TotalExposureCents(), lane.MaxGameCents())
-			return nil
+	var approved []events.OrderIntent
+	for _, intent := range intents {
+		lane := s.router.Route(intent.Sport, intent.League)
+		if lane == nil {
+			telemetry.Warnf("execution: no lane for sport=%s league=%s", intent.Sport, intent.League)
+			continue
 		}
+
+		orderCents := int(intent.LimitPct)
+
+		gc, gcOK := s.gameStore.Get(intent.Sport, intent.GameID)
+		if gcOK && lane.MaxGameCents() > 0 {
+			if gc.TotalExposureCents()+orderCents > lane.MaxGameCents() {
+				telemetry.Infof("execution: per-game cap reached ticker=%s game=%s spent=%d limit=%d",
+					intent.Ticker, intent.GameID, gc.TotalExposureCents(), lane.MaxGameCents())
+				continue
+			}
+		}
+
+		if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents) {
+			telemetry.Infof("execution: blocked by lane checks ticker=%s", intent.Ticker)
+			continue
+		}
+
+		lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
+		approved = append(approved, intent)
 	}
 
-	// Per-sport spending cap + idempotency.
-	if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents) {
-		telemetry.Infof("execution: blocked by lane checks ticker=%s", intent.Ticker)
+	if len(approved) == 0 {
 		return nil
 	}
 
-	// Mark as sent before the async call so duplicate intents are rejected.
-	lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
-
-	// Fire the HTTP call on its own goroutine — don't block the game's event loop.
-	go s.placeOrder(intent, evt.Timestamp)
-
+	go s.placeBatchOrder(approved, evt.Timestamp)
 	return nil
 }
 
-func (s *Service) placeOrder(intent events.OrderIntent, webhookReceivedAt time.Time) {
-	req := kalshi_http.CreateOrderRequest{
-		Ticker:   intent.Ticker,
-		Action:   "buy",
-		Side:     intent.Side,
-		Type:     "limit",
-		Count:    1,
-		ClientID: intent.Ticker + ":" + intent.Reason,
-	}
-
-	// TODO: remove hardcoded 1¢ limit once strategy pricing is validated
-	if intent.Side == "yes" {
-		req.YesPrice = 1
-	} else {
-		req.NoPrice = 1
+func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedAt time.Time) {
+	var reqs []kalshi_http.CreateOrderRequest
+	for _, intent := range intents {
+		req := kalshi_http.CreateOrderRequest{
+			Ticker:      intent.Ticker,
+			Action:      "buy",
+			Side:        intent.Side,
+			Type:        "limit",
+			Count:       1,
+			ClientID:    intent.Ticker + ":" + intent.Reason,
+			TimeInForce: "good_till_canceled",
+		}
+		// TODO: remove hardcoded 1¢ limit once strategy pricing is validated
+		if intent.Side == "yes" {
+			req.YesPrice = 1
+		} else {
+			req.NoPrice = 1
+		}
+		reqs = append(reqs, req)
 	}
 
 	if !webhookReceivedAt.IsZero() {
 		e2e := time.Since(webhookReceivedAt)
 		telemetry.Metrics.OrderE2ELatency.Record(e2e)
-		telemetry.Infof("execution: e2e_latency=%s ticker=%s", e2e, intent.Ticker)
+		telemetry.Infof("execution: batch e2e_latency=%s orders=%d", e2e, len(reqs))
 	}
 
-	resp, err := s.client.PlaceOrder(context.Background(), req)
-	if err != nil {
-		telemetry.Errorf("execution: order failed ticker=%s: %v", intent.Ticker, err)
-		return
-	}
-
-	if !webhookReceivedAt.IsZero() {
-		telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q e2e=%s",
-			intent.Ticker, resp.Order.OrderID, intent.Reason, time.Since(webhookReceivedAt))
-	} else {
-		telemetry.Infof("execution: order placed ticker=%s order_id=%s reason=%q",
-			intent.Ticker, resp.Order.OrderID, intent.Reason)
-	}
-
-	gc, ok := s.gameStore.Get(intent.Sport, intent.GameID)
-	if !ok {
-		return
-	}
-	gc.Send(func() {
-		gc.RecordFill(game.Fill{
-			OrderID:   resp.Order.OrderID,
-			Ticker:    intent.Ticker,
-			Side:      intent.Side,
-			CostCents: 1,
-		})
+	resp, err := s.client.PlaceBatchOrders(context.Background(), kalshi_http.BatchCreateOrdersRequest{
+		Orders: reqs,
 	})
+	if err != nil {
+		telemetry.Errorf("execution: batch order failed: %v", err)
+		return
+	}
+
+	for i, r := range resp.Orders {
+		if i >= len(intents) {
+			break
+		}
+		intent := intents[i]
+
+		if r.Error != nil {
+			telemetry.Errorf("execution: order failed ticker=%s: %s", intent.Ticker, r.Error.Message)
+			continue
+		}
+		if r.Order == nil {
+			continue
+		}
+
+		telemetry.Infof("execution: order placed ticker=%s side=%s order_id=%s reason=%q",
+			intent.Ticker, intent.Side, r.Order.OrderID, intent.Reason)
+
+		gc, ok := s.gameStore.Get(intent.Sport, intent.GameID)
+		if !ok {
+			continue
+		}
+		orderID := r.Order.OrderID
+		gc.Send(func() {
+			gc.RecordFill(game.Fill{
+				OrderID:   orderID,
+				Ticker:    intent.Ticker,
+				Side:      intent.Side,
+				CostCents: 1,
+			})
+		})
+	}
 }

@@ -374,18 +374,19 @@ func (e *Engine) createGameContext(gu events.GameUpdateEvent, gameStartedAt time
 }
 
 func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport, league, gameID string, ts time.Time) {
-	for _, intent := range intents {
-		telemetry.Metrics.OrderIntents.Inc()
-		e.bus.Publish(events.Event{
-			ID:        intent.Ticker,
-			Type:      events.EventOrderIntent,
-			Sport:     sport,
-			League:    league,
-			GameID:    gameID,
-			Timestamp: ts,
-			Payload:   intent,
-		})
+	if len(intents) == 0 {
+		return
 	}
+	telemetry.Metrics.OrderIntents.Add(int64(len(intents)))
+	e.bus.Publish(events.Event{
+		ID:        gameID,
+		Type:      events.EventOrderIntent,
+		Sport:     sport,
+		League:    league,
+		GameID:    gameID,
+		Timestamp: ts,
+		Payload:   intents,
+	})
 }
 
 func printGame(gc *game.GameContext, eventType string) {

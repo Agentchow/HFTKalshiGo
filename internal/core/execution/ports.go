@@ -10,4 +10,5 @@ import (
 // Satisfied by *kalshi_http.Client.
 type OrderPlacer interface {
 	PlaceOrder(ctx context.Context, req kalshi_http.CreateOrderRequest) (*kalshi_http.CreateOrderResponse, error)
+	PlaceBatchOrders(ctx context.Context, req kalshi_http.BatchCreateOrdersRequest) (*kalshi_http.BatchCreateOrdersResponse, error)
 }

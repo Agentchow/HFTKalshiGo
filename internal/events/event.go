@@ -31,6 +31,6 @@ const (
 	EventMarketData EventType = "market_data"
 	// Kalshi WebSocket status
 	EventWSStatus EventType = "ws_status"
-	// Internal Order Events
+	// Internal Order Events — payload is []OrderIntent (batch)
 	EventOrderIntent EventType = "order_intent"
 )

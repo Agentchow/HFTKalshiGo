@@ -184,7 +184,15 @@ func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
 	if !ok {
 		return false
 	}
-	return len(s.findEdges(hs)) > 0
+	for _, e := range []float64{
+		hs.EdgeHomeYes, hs.EdgeAwayYes,
+		hs.EdgeHomeNo, hs.EdgeAwayNo,
+	} {
+		if e >= discrepancyPct {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
@@ -220,12 +228,17 @@ func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
 	return edges
 }
 
-// buildOrderIntent converts detected edges into OrderIntents and marks them as ordered.
+// buildOrderIntent converts detected edges into paired OrderIntents
+// (YES on the favored side + NO on the opposite side) and marks them as ordered.
 func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge) []events.OrderIntent {
 	var intents []events.OrderIntent
 	for _, e := range edges {
 		td := gc.Tickers[e.ticker]
 		hs.MarkOrdered(e.outcome)
+
+		reason := fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", e.modelPct, td.YesAsk, e.edgeVal)
+
+		// Primary: YES on the edge side
 		intents = append(intents, events.OrderIntent{
 			Sport:     gc.Sport,
 			League:    gc.League,
@@ -235,12 +248,40 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 			Side:      "yes",
 			Outcome:   e.outcome,
 			LimitPct:  e.modelPct,
-			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", e.modelPct, td.YesAsk, e.edgeVal),
+			Reason:    reason,
 			HomeScore: hs.HomeScore,
 			AwayScore: hs.AwayScore,
 		})
+
+		// Complement: NO on the opposite side (same directional bet)
+		oppTicker, oppOutcome := s.oppositeSide(hs, e.outcome)
+		if oppTicker != "" {
+			intents = append(intents, events.OrderIntent{
+				Sport:     gc.Sport,
+				League:    gc.League,
+				GameID:    gc.EID,
+				EID:       gc.EID,
+				Ticker:    oppTicker,
+				Side:      "no",
+				Outcome:   oppOutcome,
+				LimitPct:  100 - e.modelPct,
+				Reason:    reason,
+				HomeScore: hs.HomeScore,
+				AwayScore: hs.AwayScore,
+			})
+		}
 	}
 	return intents
+}
+
+func (s *Strategy) oppositeSide(hs *hockeyState.HockeyState, outcome string) (ticker, oppOutcome string) {
+	if outcome == "home" && hs.AwayTicker != "" {
+		return hs.AwayTicker, "away"
+	}
+	if outcome == "away" && hs.HomeTicker != "" {
+		return hs.HomeTicker, "home"
+	}
+	return "", ""
 }
 
 // ── Pregame odds infrastructure ──────────────────────────────────────
@@ -338,36 +379,61 @@ func fuzzyTeamMatch(a, b string) bool {
 	return false
 }
 
-// slamOrders emits high-confidence orders when a game finishes with a clear winner.
+// slamOrders emits high-confidence paired orders when a game finishes with a clear winner:
+// YES on the winner's ticker + NO on the loser's ticker.
 func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState, gu *events.GameUpdateEvent) []events.OrderIntent {
 	if gu.HomeScore == gu.AwayScore {
 		return nil
 	}
 
-	var winTicker, outcome string
+	var winTicker, loseTicker, winOutcome, loseOutcome string
 	if gu.HomeScore > gu.AwayScore {
 		winTicker = hs.HomeTicker
-		outcome = "home"
+		loseTicker = hs.AwayTicker
+		winOutcome = "home"
+		loseOutcome = "away"
 	} else {
 		winTicker = hs.AwayTicker
-		outcome = "away"
+		loseTicker = hs.HomeTicker
+		winOutcome = "away"
+		loseOutcome = "home"
 	}
 
 	if winTicker == "" {
 		return nil
 	}
 
-	return []events.OrderIntent{{
+	reason := fmt.Sprintf("game finished %d-%d", gu.HomeScore, gu.AwayScore)
+
+	intents := []events.OrderIntent{{
 		Sport:     gu.Sport,
 		League:    gu.League,
 		GameID:    gu.EID,
 		EID:       gu.EID,
 		Ticker:    winTicker,
 		Side:      "yes",
-		Outcome:   outcome,
+		Outcome:   winOutcome,
 		LimitPct:  1,
-		Reason:    fmt.Sprintf("game finished %d-%d", gu.HomeScore, gu.AwayScore),
+		Reason:    reason,
 		HomeScore: gu.HomeScore,
 		AwayScore: gu.AwayScore,
 	}}
+
+	if loseTicker != "" {
+		intents = append(intents, events.OrderIntent{
+			Sport:     gu.Sport,
+			League:    gu.League,
+			GameID:    gu.EID,
+			EID:       gu.EID,
+			Ticker:    loseTicker,
+			Side:      "no",
+			Outcome:   loseOutcome,
+			LimitPct:  1,
+			Reason:    reason,
+			HomeScore: gu.HomeScore,
+			AwayScore: gu.AwayScore,
+		})
+	}
+
+	return intents
 }

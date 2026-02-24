@@ -12,14 +12,15 @@ import (
 
 // CreateOrderRequest is the payload for POST /trade-api/v2/portfolio/orders.
 type CreateOrderRequest struct {
-	Ticker   string `json:"ticker"`
-	Action   string `json:"action"` // "buy" or "sell"
-	Side     string `json:"side"`   // "yes" or "no"
-	Type     string `json:"type"`   // "limit" or "market"
-	Count    int    `json:"count"`
-	YesPrice int    `json:"yes_price,omitempty"`
-	NoPrice  int    `json:"no_price,omitempty"`
-	ClientID string `json:"client_order_id,omitempty"`
+	Ticker      string `json:"ticker"`
+	Action      string `json:"action"`                 // "buy" or "sell"
+	Side        string `json:"side"`                   // "yes" or "no"
+	Type        string `json:"type"`                   // "limit" or "market"
+	Count       int    `json:"count"`
+	YesPrice    int    `json:"yes_price,omitempty"`
+	NoPrice     int    `json:"no_price,omitempty"`
+	ClientID    string `json:"client_order_id,omitempty"`
+	TimeInForce string `json:"time_in_force,omitempty"` // "good_till_canceled", "immediate_or_cancel", "fill_or_kill"
 }
 
 type CreateOrderResponse struct {
@@ -48,6 +49,54 @@ func (c *Client) PlaceOrder(ctx context.Context, req CreateOrderRequest) (*Creat
 	telemetry.Metrics.OrdersSent.Inc()
 	telemetry.Infof("kalshi: order placed ticker=%s side=%s count=%d -> %s",
 		req.Ticker, req.Side, req.Count, resp.Order.OrderID)
+
+	return &resp, nil
+}
+
+// BatchCreateOrdersRequest is the payload for POST /trade-api/v2/portfolio/orders/batched.
+type BatchCreateOrdersRequest struct {
+	Orders []CreateOrderRequest `json:"orders"`
+}
+
+type BatchCreateOrdersResponse struct {
+	Orders []BatchCreateOrdersIndividualResponse `json:"orders"`
+}
+
+type BatchCreateOrdersIndividualResponse struct {
+	Order *struct {
+		OrderID string `json:"order_id"`
+		Status  string `json:"status"`
+	} `json:"order"`
+	Error *struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	} `json:"error"`
+}
+
+func (c *Client) PlaceBatchOrders(ctx context.Context, req BatchCreateOrdersRequest) (*BatchCreateOrdersResponse, error) {
+	body, status, err := c.Post(ctx, "/trade-api/v2/portfolio/orders/batched", req)
+	if err != nil {
+		telemetry.Metrics.OrderErrors.Inc()
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		telemetry.Metrics.OrderErrors.Inc()
+		return nil, fmt.Errorf("batch order rejected: status=%d body=%s", status, string(body))
+	}
+
+	var resp BatchCreateOrdersResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal batch order response: %w", err)
+	}
+
+	for _, r := range resp.Orders {
+		if r.Error != nil {
+			telemetry.Warnf("kalshi: batch order error: %s", r.Error.Message)
+			telemetry.Metrics.OrderErrors.Inc()
+		} else if r.Order != nil {
+			telemetry.Metrics.OrdersSent.Inc()
+		}
+	}
 
 	return &resp, nil
 }

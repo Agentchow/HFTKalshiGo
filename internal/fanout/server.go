@@ -98,7 +98,7 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 	s.clients[c] = struct{}{}
 	s.mu.Unlock()
 
-	telemetry.Plainf("Fanout: Client Connected [%s]", strings.ToUpper(string(sport)[:1])+string(sport)[1:])
+	telemetry.Plainf("Fanout: Client Connected [%s] at %s", strings.ToUpper(string(sport)[:1])+string(sport)[1:], time.Now().Format("15:04:05"))
 
 	go s.writePump(c)
 	go s.readPump(c)

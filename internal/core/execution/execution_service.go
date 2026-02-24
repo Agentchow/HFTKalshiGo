@@ -158,6 +158,9 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			ClientID:    clientID,
 			TimeInForce: "good_till_canceled",
 		}
+		if !intent.Slam {
+			req.ExpirationTS = time.Now().Add(10 * time.Second).Unix()
+		}
 		priceCents := intent.LimitPct
 		if priceCents < 1 {
 			priceCents = 1

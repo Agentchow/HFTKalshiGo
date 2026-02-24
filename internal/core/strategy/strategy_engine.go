@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,7 +37,8 @@ type Engine struct {
 	display    *display.Tracker
 	subscriber TickerSubscriber
 
-	kalshiWSUp atomic.Bool
+	kalshiWSUp  atomic.Bool
+	skippedEIDs sync.Map
 
 	soccerTraining *training.Store
 	hockeyTraining *training.HockeyStore
@@ -81,13 +83,11 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 	gc, exists := e.store.Get(gu.Sport, gu.EID)
 	if !exists {
-		gameStart := evt.Timestamp
-		if gu.GameStartUTC > 0 {
-			gameStart = time.Unix(gu.GameStartUTC, 0)
+		if _, tried := e.skippedEIDs.LoadOrStore(gu.EID, struct{}{}); tried {
+			return nil
 		}
-		gc = e.createGameContext(gu, gameStart)
-		e.store.Put(gc)
-		telemetry.Metrics.ActiveGames.Inc()
+		go e.resolveAndCreate(gu, evt)
+		return nil
 	}
 
 	gc.Send(func() {
@@ -99,10 +99,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			}
 			ds.Finaled = true
 			telemetry.Metrics.ActiveGames.Dec()
-
-			if len(gc.Tickers) == 0 {
-				return
-			}
 
 			strat, ok := e.registry.Get(gu.Sport)
 			if !ok {
@@ -126,10 +122,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		prevAway := gc.Game.GetAwayScore()
 
 		result := strat.Evaluate(gc, &gu)
-
-		if len(gc.Tickers) == 0 {
-			return
-		}
 
 		e.publishIntents(result.Intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
 
@@ -301,20 +293,75 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	return nil
 }
 
-func (e *Engine) createGameContext(gu events.GameUpdateEvent, gameStartedAt time.Time) *game.GameContext {
+// resolveAndCreate attempts to match a GoalServe game to a Kalshi market.
+// On match, creates a fully initialized GameContext with tickers already set.
+// On failure, the EID stays in skippedEIDs so future webhooks skip instantly.
+func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
+	if e.resolver == nil {
+		return
+	}
+
+	gameStart := evt.Timestamp
+	if gu.GameStartUTC > 0 {
+		gameStart = time.Unix(gu.GameStartUTC, 0)
+	}
+
+	resolved := e.resolver.Resolve(context.Background(), gu.Sport, gu.HomeTeam, gu.AwayTeam, gameStart)
+	if resolved == nil {
+		telemetry.Debugf("ticker: no match for %s %s vs %s", gu.Sport, gu.HomeTeam, gu.AwayTeam)
+		return
+	}
+
 	gs := e.registry.CreateGameState(gu.Sport, gu.EID, gu.League, gu.HomeTeam, gu.AwayTeam)
 	gc := game.NewGameContext(gu.Sport, gu.League, gu.EID, gs)
-	gc.GameStartedAt = gameStartedAt
-
+	gc.GameStartedAt = gameStart
 	gc.OnMatchStatusChange = e.onMatchStatusChange
 	gc.OnRedCardChange = e.onRedCardChange
 	gc.OnPowerPlayChange = e.onPowerPlayChange
 
-	if e.resolver != nil {
-		go e.resolveTickers(gc, gu, gameStartedAt)
+	allTickers := resolved.AllTickers()
+	if e.subscriber != nil {
+		if err := e.subscriber.SubscribeTickers(allTickers); err != nil {
+			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", gu.HomeTeam, gu.AwayTeam, err)
+		}
 	}
 
-	return gc
+	initialStatus := gu.MatchStatus
+	if initialStatus == "" {
+		initialStatus = "Live"
+	}
+
+	gc.Send(func() {
+		gc.KalshiConnected = e.kalshiWSUp.Load()
+		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
+		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
+
+		for _, t := range allTickers {
+			td := &game.TickerData{Ticker: t, NoAsk: 100, NoBid: 100}
+			if snap, ok := resolved.Prices[t]; ok {
+				td.YesAsk = float64(snap.YesAsk)
+				td.YesBid = float64(snap.YesBid)
+				td.NoAsk = float64(snap.NoAsk)
+				td.NoBid = float64(snap.NoBid)
+				td.Volume = snap.Volume
+			}
+			gc.Tickers[t] = td
+			e.store.RegisterTicker(t, gc)
+		}
+
+		ds := e.display.Get(gc.EID)
+		if initialStatus == "Game Start" {
+			ds.GameStarted = true
+		}
+		gc.SetMatchStatus(initialStatus)
+
+		if gc.Game.HasPregame() {
+			gc.Game.RecalcEdge(gc.Tickers)
+		}
+	})
+
+	e.store.Put(gc)
+	telemetry.Metrics.ActiveGames.Inc()
 }
 
 func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport, league, gameID string, ts time.Time) {
@@ -334,9 +381,6 @@ func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport
 }
 
 func printGame(gc *game.GameContext, eventType string) {
-	if gc.KalshiEventURL == "" {
-		return
-	}
 	switch gc.Sport {
 	case events.SportHockey:
 		display.PrintHockey(gc, eventType)
@@ -363,6 +407,9 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		if e.soccerTraining == nil || isMockGame(gc.EID) {
 			return
 		}
+		if gc.TotalVolume() < minTrainingVolume {
+			return
+		}
 		ss, ok := gc.Game.(*soccerState.SoccerState)
 		if !ok {
 			return
@@ -385,6 +432,9 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 
 	case events.SportHockey:
 		if e.hockeyTraining == nil || isMockGame(gc.EID) {
+			return
+		}
+		if gc.TotalVolume() < minTrainingVolume {
 			return
 		}
 		hs, ok := gc.Game.(*hockeyState.HockeyState)
@@ -413,7 +463,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
 	printGame(gc, "Red Card")
 
-	if e.soccerTraining == nil || isMockGame(gc.EID) {
+	if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 		return
 	}
 	ss, ok := gc.Game.(*soccerState.SoccerState)
@@ -437,7 +487,7 @@ func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
 	}
 	printGame(gc, label)
 
-	if e.hockeyTraining == nil || isMockGame(gc.EID) {
+	if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 		return
 	}
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
@@ -538,6 +588,8 @@ func regulationOutcome(ss *soccerState.SoccerState) string {
 	return "draw"
 }
 
+const minTrainingVolume int64 = 50_000
+
 func f64Ptr(v float64) *float64 { return &v }
 
 func isMockGame(eid string) bool { return strings.HasPrefix(eid, "MOCK-") }
@@ -617,52 +669,3 @@ func hockeyOutcome(homeScore, awayScore int) string {
 	return "shootout"
 }
 
-// resolveTickers runs async (HTTP call), then sends results back to the game goroutine.
-func (e *Engine) resolveTickers(gc *game.GameContext, gu events.GameUpdateEvent, gameStartedAt time.Time) {
-	resolved := e.resolver.Resolve(context.Background(), gu.Sport, gu.HomeTeam, gu.AwayTeam, gameStartedAt)
-	if resolved == nil {
-		telemetry.Debugf("ticker: no match for %s %s vs %s", gu.Sport, gu.HomeTeam, gu.AwayTeam)
-		return
-	}
-
-	allTickers := resolved.AllTickers()
-	if e.subscriber != nil {
-		if err := e.subscriber.SubscribeTickers(allTickers); err != nil {
-			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", gu.HomeTeam, gu.AwayTeam, err)
-		}
-	}
-
-	initialStatus := gu.MatchStatus
-	if initialStatus == "" {
-		initialStatus = "Live"
-	}
-
-	gc.Send(func() {
-		gc.KalshiConnected = e.kalshiWSUp.Load()
-		gc.Game.SetTickers(resolved.HomeTicker, resolved.AwayTicker, resolved.DrawTicker)
-		gc.KalshiEventURL = ticker.KalshiEventURL(resolved.EventTicker)
-
-		for _, t := range allTickers {
-			td := &game.TickerData{Ticker: t, NoAsk: 100, NoBid: 100}
-			if snap, ok := resolved.Prices[t]; ok {
-				td.YesAsk = float64(snap.YesAsk)
-				td.YesBid = float64(snap.YesBid)
-				td.NoAsk = float64(snap.NoAsk)
-				td.NoBid = float64(snap.NoBid)
-				td.Volume = snap.Volume
-			}
-			gc.Tickers[t] = td
-			e.store.RegisterTicker(t, gc)
-		}
-
-		ds := e.display.Get(gc.EID)
-		if initialStatus == "Game Start" {
-			ds.GameStarted = true
-		}
-		gc.SetMatchStatus(initialStatus)
-
-		if gc.Game.HasPregame() {
-			gc.Game.RecalcEdge(gc.Tickers)
-		}
-	})
-}

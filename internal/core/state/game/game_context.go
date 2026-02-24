@@ -179,6 +179,16 @@ func (gc *GameContext) RecordFill(f Fill) {
 	gc.Fills = append(gc.Fills, f)
 }
 
+// TotalVolume sums volume across all tickers for this game.
+// Must be called from the game's goroutine (inside a Send closure).
+func (gc *GameContext) TotalVolume() int64 {
+	var total int64
+	for _, td := range gc.Tickers {
+		total += td.Volume
+	}
+	return total
+}
+
 // TotalExposureCents sums all fill costs for this game.
 // Must be called from the game's goroutine (inside a Send closure).
 func (gc *GameContext) TotalExposureCents() int {

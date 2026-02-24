@@ -21,6 +21,7 @@ type CreateOrderRequest struct {
 	NoPriceDollars  string `json:"no_price_dollars,omitempty"`  // e.g. "0.0100"
 	ClientID        string `json:"client_order_id,omitempty"`
 	TimeInForce     string `json:"time_in_force,omitempty"`     // "good_till_canceled", "immediate_or_cancel", "fill_or_kill"
+	ExpirationTS    int64  `json:"expiration_ts,omitempty"`
 }
 
 type CreateOrderResponse struct {

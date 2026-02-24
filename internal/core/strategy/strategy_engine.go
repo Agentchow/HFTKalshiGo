@@ -354,10 +354,9 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 		if initialStatus == "Game Start" {
 			ds.GameStarted = true
 		}
-		gc.SetMatchStatus(initialStatus)
-
 		if gc.Game.HasPregame() {
 			gc.Game.RecalcEdge(gc.Tickers)
+			gc.SetMatchStatus(initialStatus)
 		}
 	})
 

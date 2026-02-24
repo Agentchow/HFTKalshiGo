@@ -81,8 +81,15 @@ var Metrics = struct {
 	OrderE2ELatency    *LatencyTracker
 	RateLimiterWait    *LatencyTracker
 	InboxOverflows     Counter
+
+	// GoalServe WebSocket metrics
+	WSMessagesReceived Counter
+	WSParseErrors      Counter
+	WSReconnects       Counter
+	WSLatency          *LatencyTracker
 }{
 	WebhookLatency:  NewLatencyTracker(1000),
 	OrderE2ELatency: NewLatencyTracker(1000),
 	RateLimiterWait: NewLatencyTracker(1000),
+	WSLatency:       NewLatencyTracker(1000),
 }

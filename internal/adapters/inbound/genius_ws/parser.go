@@ -40,6 +40,7 @@ func ParseMessage(data []byte) []events.Event {
 	sport := mapSport(msg.Sport)
 	gu := events.GameUpdateEvent{
 		EID:         msg.FixtureID,
+		Source:      "genius_ws",
 		Sport:       sport,
 		League:      msg.League,
 		HomeTeam:    msg.Home.Name,

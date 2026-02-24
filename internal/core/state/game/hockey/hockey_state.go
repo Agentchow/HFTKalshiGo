@@ -96,7 +96,7 @@ func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 
 func (h *HockeyState) IsOvertime() bool {
 	p := strings.ToLower(strings.TrimSpace(h.Period))
-	return strings.Contains(p, "overtime") || p == "ot" || p == "penalties"
+	return strings.Contains(p, "overtime") || p == "ot" || p == "penalties" || p == "shootout"
 }
 
 func (h *HockeyState) IsFinished() bool {

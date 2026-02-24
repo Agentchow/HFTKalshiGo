@@ -21,6 +21,13 @@ type Config struct {
 	KalshiKeyID   string
 	KalshiKeyFile string // path to RSA PEM private key
 
+	// GoalServe WebSocket
+	GoalserveWSEnabled   bool
+	GoalserveWSAuthURL   string
+	GoalserveWSURL       string
+	GoalserveWSSports    string // comma-separated: "soccer,hockey,amfootball"
+	GoalserveWSStorePath string
+
 	// Genius Sports
 	GeniusWSURL string
 	GeniusToken string
@@ -81,6 +88,12 @@ func Load() *Config {
 		KalshiWSURL:   wsURL,
 		KalshiKeyID:   keyID,
 		KalshiKeyFile: keyFile,
+
+		GoalserveWSEnabled:   envStr("GOALSERVE_WS_ENABLED", "false") == "true",
+		GoalserveWSAuthURL:   envStr("GOALSERVE_WS_AUTH_URL", "http://live.goalserve.com/api/v1/auth/gettoken"),
+		GoalserveWSURL:       envStr("GOALSERVE_WS_URL", "ws://live.goalserve.com/ws"),
+		GoalserveWSSports:    envStr("GOALSERVE_WS_SPORTS", "soccer,hockey,amfootball"),
+		GoalserveWSStorePath: envStr("GOALSERVE_WS_STORE_PATH", "data/goalserve_ws.db"),
 
 		GeniusWSURL: envStr("GENIUS_WS_URL", ""),
 		GeniusToken: envStr("GENIUS_TOKEN", ""),

@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/inbound/goalserve_webhook"
+	goalserve_ws "github.com/charleschow/hft-trading/internal/adapters/inbound/goalserve_ws"
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
@@ -62,43 +64,71 @@ func main() {
 		}
 	}()
 
-	// ── Webhook payload store ──────────────────────────────────
-	webhookStore, err := goalserve_webhook.OpenStore(cfg.WebhookStorePath)
-	if err != nil {
-		telemetry.Warnf("Webhook store disabled: %v", err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// ── Webhook server ─────────────────────────────────────────
-	webhookHandler := goalserve_webhook.NewHandler(bus, webhookStore)
-	mux := http.NewServeMux()
-	webhookHandler.RegisterRoutes(mux)
-
-	addr := fmt.Sprintf("%s:%d", cfg.WebhookHost, cfg.WebhookPort)
-	server := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			telemetry.Errorf("HTTP server: %v", err)
-			os.Exit(1)
-		}
-	}()
-	telemetry.Plainf("Webhook listening on %q", addr)
-
-	// ── ngrok ──────────────────────────────────────────────────
+	var server *http.Server
 	var ngrokProc *os.Process
-	if cfg.NgrokEnabled {
-		proc, publicURL, err := startNgrok(cfg.WebhookPort, cfg.NgrokAuthToken, cfg.NgrokDomain)
+	var webhookStore *goalserve_webhook.Store
+	var wsStore *goalserve_ws.Store
+
+	if cfg.GoalserveWSEnabled {
+		// ── GoalServe WebSocket mode ──────────────────────────────
+		var err2 error
+		wsStore, err2 = goalserve_ws.OpenStore(cfg.GoalserveWSStorePath)
+		if err2 != nil {
+			telemetry.Warnf("WS store disabled: %v", err2)
+		}
+
+		tp := goalserve_ws.NewTokenProvider(cfg.GoalserveWSAuthURL, cfg.GoalserveAPIKey)
+
+		sports := strings.Split(cfg.GoalserveWSSports, ",")
+		telemetry.Plainf("GoalServe WS mode enabled  sports=%v", sports)
+
+		for _, sport := range sports {
+			sport = strings.TrimSpace(sport)
+			if sport == "" {
+				continue
+			}
+			wsClient := goalserve_ws.NewClient(sport, cfg.GoalserveWSURL, tp, bus, wsStore)
+			go wsClient.ConnectWithRetry(ctx)
+		}
+	} else {
+		// ── Webhook mode (default) ────────────────────────────────
+		webhookStore, err = goalserve_webhook.OpenStore(cfg.WebhookStorePath)
 		if err != nil {
-			telemetry.Warnf("Ngrok failed: %v (falling back to local)", err)
-		} else {
-			ngrokProc = proc
-			telemetry.Plainf("Ngrok tunnel on %q", publicURL)
+			telemetry.Warnf("Webhook store disabled: %v", err)
+		}
+
+		webhookHandler := goalserve_webhook.NewHandler(bus, webhookStore)
+		mux := http.NewServeMux()
+		webhookHandler.RegisterRoutes(mux)
+
+		addr := fmt.Sprintf("%s:%d", cfg.WebhookHost, cfg.WebhookPort)
+		server = &http.Server{
+			Addr:         addr,
+			Handler:      mux,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+
+		go func() {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				telemetry.Errorf("HTTP server: %v", err)
+				os.Exit(1)
+			}
+		}()
+		telemetry.Plainf("Webhook listening on %q", addr)
+
+		if cfg.NgrokEnabled {
+			proc, publicURL, err := startNgrok(cfg.WebhookPort, cfg.NgrokAuthToken, cfg.NgrokDomain)
+			if err != nil {
+				telemetry.Warnf("Ngrok failed: %v (falling back to local)", err)
+			} else {
+				ngrokProc = proc
+				telemetry.Plainf("Ngrok tunnel on %q", publicURL)
+			}
 		}
 	}
 
@@ -108,24 +138,38 @@ func main() {
 	<-sigCh
 
 	telemetry.Infof("Shutting down...")
+	cancel()
 
 	if ngrokProc != nil {
 		ngrokProc.Signal(syscall.SIGTERM)
 		ngrokProc.Wait()
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	server.Shutdown(shutdownCtx)
+	if server != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		server.Shutdown(shutdownCtx)
+	}
 
 	if webhookStore != nil {
 		webhookStore.Close()
 	}
+	if wsStore != nil {
+		wsStore.Close()
+	}
 
-	telemetry.Infof("Shutdown complete  webhooks=%d  events=%d",
-		telemetry.Metrics.WebhooksReceived.Value(),
-		telemetry.Metrics.EventsProcessed.Value(),
-	)
+	if cfg.GoalserveWSEnabled {
+		telemetry.Infof("Shutdown complete  ws_msgs=%d  events=%d  reconnects=%d",
+			telemetry.Metrics.WSMessagesReceived.Value(),
+			telemetry.Metrics.EventsProcessed.Value(),
+			telemetry.Metrics.WSReconnects.Value(),
+		)
+	} else {
+		telemetry.Infof("Shutdown complete  webhooks=%d  events=%d",
+			telemetry.Metrics.WebhooksReceived.Value(),
+			telemetry.Metrics.EventsProcessed.Value(),
+		)
+	}
 }
 
 func startNgrok(port int, authToken, domain string) (*os.Process, string, error) {

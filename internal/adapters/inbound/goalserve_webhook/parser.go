@@ -107,6 +107,7 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 
 		gu := events.GameUpdateEvent{
 			EID:          eid,
+			Source:       "goalserve_webhook",
 			Sport:        p.sport,
 			League:       league,
 			HomeTeam:     strings.TrimSpace(ev.TeamInfo.Home.Name),

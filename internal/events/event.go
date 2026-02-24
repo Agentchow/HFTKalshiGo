@@ -25,7 +25,7 @@ type Event struct {
 type EventType string
 
 const (
-	// GoalServe Webhook/Genius Websocket Events
+	// GoalServe Webhook/WS and Genius Sports WS events
 	EventGameUpdate EventType = "game_update"
 	// Kalshi Ticker Events
 	EventMarketData EventType = "market_data"

@@ -12,12 +12,11 @@ import (
 
 // Strategy implements American football trading logic.
 type Strategy struct {
-	scoreDropConfirmSec int
-	lastPendingLog      time.Time
+	lastPendingLog time.Time
 }
 
-func NewStrategy(scoreDropConfirmSec int) *Strategy {
-	return &Strategy{scoreDropConfirmSec: scoreDropConfirmSec}
+func NewStrategy() *Strategy {
+	return &Strategy{}
 }
 
 func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) strategy.EvalResult {
@@ -27,7 +26,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	}
 
 	if fs.HasLiveData() {
-		result := fs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
+		result := fs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":
 			telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
@@ -35,7 +34,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
-			if time.Since(s.lastPendingLog) >= 20*time.Second {
+			if time.Since(s.lastPendingLog) >= 5*time.Second {
 				telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
 					result, gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()

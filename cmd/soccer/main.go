@@ -71,7 +71,7 @@ func main() {
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregame))
+	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(pregame))
 	engine := strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 	engine.SetSoccerTraining(trainingStore, cfg.TrainingBackfillDelaySec)
 

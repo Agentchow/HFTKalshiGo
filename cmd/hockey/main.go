@@ -25,7 +25,7 @@ import (
 func main() {
 	cfg := config.Load()
 	telemetry.Init(telemetry.ParseLogLevel(cfg.LogLevel))
-	telemetry.Infof("Starting hockey process")
+	telemetry.Plainf("Starting hockey process")
 
 	bus := events.NewBus()
 	gameStore := store.New()
@@ -71,7 +71,7 @@ func main() {
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(cfg.ScoreDropConfirmSec, pregame))
+	registry.Register(events.SportHockey, hockeyStrat.NewStrategy(pregame))
 	engine := strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 	engine.SetHockeyTraining(trainingStore, cfg.TrainingBackfillDelaySec)
 

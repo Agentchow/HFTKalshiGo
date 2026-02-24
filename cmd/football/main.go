@@ -55,7 +55,7 @@ func main() {
 
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
-	registry.Register(events.SportFootball, footballStrat.NewStrategy(cfg.ScoreDropConfirmSec))
+	registry.Register(events.SportFootball, footballStrat.NewStrategy())
 	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 
 	// ── Execution ──────────────────────────────────────────────

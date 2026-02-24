@@ -28,8 +28,7 @@ type PregameOddsProvider interface {
 
 // Strategy implements soccer-specific 3-way (1X2) trading logic.
 type Strategy struct {
-	scoreDropConfirmSec int
-	lastPendingLog      time.Time
+	lastPendingLog time.Time
 
 	pregame        PregameOddsProvider
 	pregameMu      sync.RWMutex
@@ -39,10 +38,9 @@ type Strategy struct {
 	pregameApplied sync.Map
 }
 
-func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy {
+func NewStrategy(pregame PregameOddsProvider) *Strategy {
 	s := &Strategy{
-		scoreDropConfirmSec: scoreDropConfirmSec,
-		pregame:             pregame,
+		pregame: pregame,
 	}
 	if pregame != nil {
 		s.loadPregameWithRetry()
@@ -103,7 +101,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	tracked := len(gc.Tickers) > 0
 
 	if ss.HasLiveData() {
-		result := ss.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
+		result := ss.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":
 			if tracked {
@@ -118,7 +116,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 				RedCardsAway:   ss.AwayRedCards,
 			}
 		case "pending":
-			if tracked && time.Since(s.lastPendingLog) >= 20*time.Second {
+			if tracked && time.Since(s.lastPendingLog) >= 5*time.Second {
 				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
 					result, ss.AwayTeam, ss.HomeTeam, gu.EID,
 					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)

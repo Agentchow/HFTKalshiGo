@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -28,10 +27,6 @@ type Config struct {
 
 	// Risk
 	RiskLimitsPath string
-
-	// Timing — wait X seconds to confirm an overturned goal before acting.
-	ScoreDropConfirmSec int
-	ScoreResetThrottle  time.Duration
 
 	// ngrok
 	NgrokEnabled   bool
@@ -91,9 +86,6 @@ func Load() *Config {
 		GeniusToken: envStr("GENIUS_TOKEN", ""),
 
 		RiskLimitsPath: envStr("RISK_LIMITS_PATH", "internal/config/risk_limits.yaml"),
-
-		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 15),
-		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 5)) * time.Second,
 
 		NgrokEnabled:   envStr("NGROK_ENABLED", "true") == "true",
 		NgrokAuthToken: envStr("NGROK_AUTH_TOKEN", ""),

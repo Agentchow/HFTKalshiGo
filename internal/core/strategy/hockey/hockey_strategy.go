@@ -34,8 +34,7 @@ type PregameOddsProvider interface {
 //  3. Recomputes model probabilities (pregame strength + projected odds)
 //  4. Compares model vs Kalshi market and emits OrderIntents for edges
 type Strategy struct {
-	scoreDropConfirmSec int
-	lastPendingLog      time.Time
+	lastPendingLog time.Time
 
 	pregame        PregameOddsProvider
 	pregameMu      sync.RWMutex
@@ -45,10 +44,9 @@ type Strategy struct {
 	pregameApplied sync.Map
 }
 
-func NewStrategy(scoreDropConfirmSec int, pregame PregameOddsProvider) *Strategy {
+func NewStrategy(pregame PregameOddsProvider) *Strategy {
 	s := &Strategy{
-		scoreDropConfirmSec: scoreDropConfirmSec,
-		pregame:             pregame,
+		pregame: pregame,
 	}
 	if pregame != nil {
 		s.loadPregameWithRetry()
@@ -100,7 +98,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	// Score-drop guard
 	overturn := false
 	if hs.HasLiveData() {
-		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
+		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":
 			telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
@@ -108,7 +106,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
-			if time.Since(s.lastPendingLog) >= 15*time.Second {
+			if time.Since(s.lastPendingLog) >= 5*time.Second {
 				telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
 					gu.HomeTeam, gu.AwayTeam, hs.GetHomeScore(), hs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()

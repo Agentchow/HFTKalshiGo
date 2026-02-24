@@ -25,7 +25,7 @@ const (
 )
 
 var preferredBookmakers = []string{
-	"pinnacle", "pin", "pinnaclesports",
+	"pinnacle", "pncl", "pin", "pinnaclesports",
 	"bet365", "williamhill", "william hill",
 	"1xbet", "marathon", "unibet",
 }
@@ -260,14 +260,24 @@ func parseHockeyPregameXML(data []byte) ([]odds.PregameOdds, error) {
 
 func extractMoneyline2WayXML(m xmlMatch) *odds.PregameOdds {
 	var mlType *xmlOddsType
+	// Prefer the 2-way Home/Away market (id=2) over the 3-way (id=1).
+	// Using 3-way odds with RemoveVig2 inflates probabilities by ignoring the draw.
 	for i, ot := range m.Odds.Types {
 		nameLow := strings.ToLower(strings.TrimSpace(ot.Value))
-		if ot.ID == "1" ||
+		if ot.ID == "2" ||
 			nameLow == "home/away" || nameLow == "moneyline" ||
-			nameLow == "money line" || nameLow == "match winner" ||
-			nameLow == "2way result" {
+			nameLow == "money line" || nameLow == "2way result" {
 			mlType = &m.Odds.Types[i]
 			break
+		}
+	}
+	if mlType == nil {
+		for i, ot := range m.Odds.Types {
+			nameLow := strings.ToLower(strings.TrimSpace(ot.Value))
+			if ot.ID == "1" || nameLow == "match winner" || nameLow == "3way result" {
+				mlType = &m.Odds.Types[i]
+				break
+			}
 		}
 	}
 	if mlType == nil {
@@ -298,6 +308,8 @@ func extractMoneyline2WayXML(m xmlMatch) *odds.PregameOdds {
 	}
 
 	h, a := odds.RemoveVig2(homeDec, awayDec)
+	telemetry.Debugf("pregame: %s vs %s bookmaker=%s type=%s home=%.3f away=%.3f -> H=%.1f%% A=%.1f%%",
+		m.LocalTeam.Name, m.AwayTeam.Name, bm.Name, mlType.Value, homeDec, awayDec, h*100, a*100)
 	return &odds.PregameOdds{
 		HomePregameStrength: h,
 		AwayPregameStrength: a,

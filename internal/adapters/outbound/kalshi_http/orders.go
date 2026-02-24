@@ -12,15 +12,15 @@ import (
 
 // CreateOrderRequest is the payload for POST /trade-api/v2/portfolio/orders.
 type CreateOrderRequest struct {
-	Ticker      string `json:"ticker"`
-	Action      string `json:"action"`                 // "buy" or "sell"
-	Side        string `json:"side"`                   // "yes" or "no"
-	Type        string `json:"type"`                   // "limit" or "market"
-	Count       int    `json:"count"`
-	YesPrice    int    `json:"yes_price,omitempty"`
-	NoPrice     int    `json:"no_price,omitempty"`
-	ClientID    string `json:"client_order_id,omitempty"`
-	TimeInForce string `json:"time_in_force,omitempty"` // "good_till_canceled", "immediate_or_cancel", "fill_or_kill"
+	Ticker          string `json:"ticker"`
+	Action          string `json:"action"`                      // "buy" or "sell"
+	Side            string `json:"side"`                        // "yes" or "no"
+	Type            string `json:"type"`                        // "limit" or "market"
+	CountFP         string `json:"count_fp,omitempty"`          // e.g. "1.00"
+	YesPriceDollars string `json:"yes_price_dollars,omitempty"` // e.g. "0.0100"
+	NoPriceDollars  string `json:"no_price_dollars,omitempty"`  // e.g. "0.0100"
+	ClientID        string `json:"client_order_id,omitempty"`
+	TimeInForce     string `json:"time_in_force,omitempty"`     // "good_till_canceled", "immediate_or_cancel", "fill_or_kill"
 }
 
 type CreateOrderResponse struct {
@@ -47,8 +47,8 @@ func (c *Client) PlaceOrder(ctx context.Context, req CreateOrderRequest) (*Creat
 	}
 
 	telemetry.Metrics.OrdersSent.Inc()
-	telemetry.Infof("kalshi: order placed ticker=%s side=%s count=%d -> %s",
-		req.Ticker, req.Side, req.Count, resp.Order.OrderID)
+	telemetry.Infof("kalshi: order placed ticker=%s side=%s count=%s -> %s",
+		req.Ticker, req.Side, req.CountFP, resp.Order.OrderID)
 
 	return &resp, nil
 }
@@ -94,8 +94,6 @@ func (c *Client) PlaceBatchOrders(ctx context.Context, req BatchCreateOrdersRequ
 		telemetry.Metrics.OrderErrors.Inc()
 		return nil, fmt.Errorf("batch order rejected: status=%d body=%s", status, string(body))
 	}
-
-	telemetry.Infof("[DEBUG] batch response status=%d body=%s", status, string(body))
 
 	var resp BatchCreateOrdersResponse
 	if err := json.Unmarshal(body, &resp); err != nil {

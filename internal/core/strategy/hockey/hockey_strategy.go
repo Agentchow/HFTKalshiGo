@@ -56,7 +56,7 @@ func NewStrategy(pregame PregameOddsProvider) *Strategy {
 
 const (
 	startupMaxAttempts = 5
-	startupRetryDelay  = 10 * time.Second
+	startupRetryDelay  = 15 * time.Second
 )
 
 func (s *Strategy) loadPregameWithRetry() {
@@ -304,7 +304,7 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 				hs.PregameG0 = &g0
 			}
 			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%%",
-				homeTeam, awayTeam, p.AwayPregameStrength*100, p.AwayPregameStrength*100)
+				homeTeam, awayTeam, p.HomePregameStrength*100, p.AwayPregameStrength*100)
 			return true
 		}
 	}

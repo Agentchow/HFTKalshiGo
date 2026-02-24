@@ -413,7 +413,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 
 	switch gc.Sport {
 	case events.SportSoccer:
-		if e.soccerTraining == nil {
+		if e.soccerTraining == nil || isMockGame(gc.EID) {
 			return
 		}
 		ss, ok := gc.Game.(*soccerState.SoccerState)
@@ -437,7 +437,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		e.spawnBackfill(gc, ss, rowID)
 
 	case events.SportHockey:
-		if e.hockeyTraining == nil {
+		if e.hockeyTraining == nil || isMockGame(gc.EID) {
 			return
 		}
 		hs, ok := gc.Game.(*hockeyState.HockeyState)
@@ -466,7 +466,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
 	printGame(gc, "Red Card")
 
-	if e.soccerTraining == nil {
+	if e.soccerTraining == nil || isMockGame(gc.EID) {
 		return
 	}
 	ss, ok := gc.Game.(*soccerState.SoccerState)
@@ -490,7 +490,7 @@ func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
 	}
 	printGame(gc, label)
 
-	if e.hockeyTraining == nil {
+	if e.hockeyTraining == nil || isMockGame(gc.EID) {
 		return
 	}
 	hs, ok := gc.Game.(*hockeyState.HockeyState)
@@ -592,6 +592,8 @@ func regulationOutcome(ss *soccerState.SoccerState) string {
 }
 
 func f64Ptr(v float64) *float64 { return &v }
+
+func isMockGame(eid string) bool { return strings.HasPrefix(eid, "MOCK-") }
 
 // ── Hockey training DB helpers ───────────────────────────────────────
 

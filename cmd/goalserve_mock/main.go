@@ -69,6 +69,7 @@ var seriesToLeague = map[string]string{
 	"KXSHLGAME":             "SHL",
 	"KXLIIGAGAME":           "Liiga",
 	"KXELHGAME":             "ELH",
+	"KXNLGAME":              "NL",
 	"KXNFLGAME":             "NFL",
 	"KXNCAAFGAME":           "NCAAF",
 }
@@ -242,7 +243,7 @@ func discoverGames() (soccer, hockey, football *gameInfo) {
 		"KXBELGIANPLGAME", "KXSERIEBGAME", "KXDIMAYORGAME",
 	}
 	hockeySeries := []string{
-		"KXNHLGAME", "KXAHLGAME", "KXKHLGAME", "KXSHLGAME",
+		"KXNHLGAME", "KXAHLGAME", "KXKHLGAME", "KXSHLGAME", "KXNLGAME",
 	}
 	footballSeries := []string{
 		"KXNFLGAME", "KXNCAAFGAME",
@@ -341,12 +342,16 @@ func extractTeamNames(group []kalshi_http.Market, isSoccer bool) (home, away str
 		return "", ""
 	}
 
+	// Kalshi hockey/football titles use "Away at Home" format.
+	// Parse the title to get the correct home/away assignment.
+	t1, t2 := parseTitle(teamMarkets[0].Title)
+	if t1 != "" && t2 != "" {
+		away, home = t1, t2
+		return
+	}
+
 	home = cleanTeamName(teamMarkets[0].YesSubTitle)
 	away = cleanTeamName(teamMarkets[1].YesSubTitle)
-
-	if home == "" || away == "" {
-		home, away = parseTitle(teamMarkets[0].Title)
-	}
 	return
 }
 

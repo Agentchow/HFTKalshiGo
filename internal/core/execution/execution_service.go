@@ -30,6 +30,7 @@ type Service struct {
 	client    OrderPlacer
 	gameStore *store.GameStateStore
 	sessionID string
+	orderSeq  int64
 }
 
 func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameStore *store.GameStateStore) *Service {
@@ -146,19 +147,21 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 
 	var reqs []kalshi_http.CreateOrderRequest
 	for _, intent := range intents {
+		s.orderSeq++
+		clientID := s.sessionID + ":" + strconv.FormatInt(s.orderSeq, 36)
 		req := kalshi_http.CreateOrderRequest{
 			Ticker:      intent.Ticker,
 			Action:      "buy",
 			Side:        intent.Side,
 			Type:        "limit",
-			Count:       1,
-			ClientID:    s.sessionID + ":" + intent.Ticker + ":" + intent.Reason,
+			CountFP:     "1.00",
+			ClientID:    clientID,
 			TimeInForce: "good_till_canceled",
 		}
 		if intent.Side == "yes" {
-			req.YesPrice = 1
+			req.YesPriceDollars = "0.0100"
 		} else {
-			req.NoPrice = 1
+			req.NoPriceDollars = "0.0100"
 		}
 		reqs = append(reqs, req)
 	}
@@ -178,13 +181,14 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		if i == 0 {
 			prefix = tsPrefix
 		}
-		price := reqs[i].YesPrice
+		priceDollars := reqs[i].YesPriceDollars
 		if intent.Side == "no" {
-			price = reqs[i].NoPrice
+			priceDollars = reqs[i].NoPriceDollars
 		}
-		fmt.Fprintf(&ob, "%s[ORDER] %-*s  %-3s  %d contracts @ %d¢\n",
+		cents := dollarsToCents(priceDollars)
+		fmt.Fprintf(&ob, "%s[ORDER] %-*s  %-3s  1 contracts @ %d¢\n",
 			prefix, nameWidth, teamFor(intent.Outcome),
-			strings.ToUpper(intent.Side), reqs[i].Count, price)
+			strings.ToUpper(intent.Side), cents)
 	}
 	fmt.Fprint(os.Stderr, ob.String())
 
@@ -236,14 +240,9 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		fillCost := o.TakerFillCost + o.MakerFillCost
 		fees := o.TakerFees + o.MakerFees
 
-		if o.FillCount > 0 {
-			avg := float64(fillCost+fees) / float64(o.FillCount)
-			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  [%d/%d] %.1f¢ avg price\n",
-				prefix, nameWidth, name, side, o.FillCount, total, avg)
-		} else {
-			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  [0/%d] resting\n",
-				prefix, nameWidth, name, side, total)
-		}
+		avg := float64(fillCost+fees) / max(float64(o.FillCount), 1)
+		fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  [%d/%d] @ %.2f¢ avg\n",
+			prefix, nameWidth, name, side, o.FillCount, total, avg)
 
 		if !gcOK {
 			continue
@@ -268,4 +267,12 @@ func shortName(name string) string {
 		return name[i+1:]
 	}
 	return name
+}
+
+func dollarsToCents(s string) int {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return int(v * 100)
 }

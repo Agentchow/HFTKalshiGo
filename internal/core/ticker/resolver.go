@@ -22,7 +22,7 @@ var _ MarketFetcher = (*kalshi_http.Client)(nil)
 var defaultSeriesTickers = map[events.Sport][]string{
 	events.SportHockey: {
 		"KXAHLGAME", "KXNHLGAME", "KXKHLGAME", "KXSHLGAME", "KXLIIGAGAME",
-		"KXELHGAME", "KXWOMHOCKEY", "KXWOWHOCKEY",
+		"KXELHGAME", "KXNLGAME", "KXWOMHOCKEY", "KXWOWHOCKEY",
 	},
 	events.SportSoccer: {
 		"KXEPLGAME", "KXUCLGAME", "KXLALIGAGAME", "KXBUNDESLIGAGAME",
@@ -49,6 +49,7 @@ var seriesSlugs = map[string]string{
 	"KXSHLGAME":   "shl-game",
 	"KXLIIGAGAME": "liiga-game",
 	"KXELHGAME":   "elh-game",
+	"KXNLGAME":    "national-league-game",
 	"KXWOMHOCKEY": "winter-olympics-mens-hockey",
 	"KXWOWHOCKEY": "winter-olympics-womens-hockey",
 	// Soccer

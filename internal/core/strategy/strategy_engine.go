@@ -293,8 +293,9 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	return nil
 }
 
-// resolveAndCreate attempts to match a GoalServe game to a Kalshi market.
-// On match, creates a fully initialized GameContext with tickers already set.
+// resolveAndCreate fuzzy-matches a GoalServe game against the Kalshi
+// market cache. A GameContext is only created when both sides match —
+// not by a Kalshi ticker alone, not by a GoalServe webhook alone.
 // On failure, the EID stays in skippedEIDs so future webhooks skip instantly.
 func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 	if e.resolver == nil {
@@ -404,16 +405,16 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 
 	switch gc.Sport {
 	case events.SportSoccer:
-		if e.soccerTraining == nil || isMockGame(gc.EID) {
-			return
-		}
-		if gc.TotalVolume() < minTrainingVolume {
+		// Skip if training DB not configured, test fixture, or illiquid game.
+		if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 			return
 		}
 		ss, ok := gc.Game.(*soccerState.SoccerState)
 		if !ok {
 			return
 		}
+		// Don't record score changes until Pinnacle live odds have arrived;
+		// without a reference price the row has no useful odds context.
 		if status == "Score Change" && !ss.PinnacleUpdated {
 			return
 		}
@@ -431,16 +432,16 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		e.spawnBackfill(gc, ss, rowID)
 
 	case events.SportHockey:
-		if e.hockeyTraining == nil || isMockGame(gc.EID) {
-			return
-		}
-		if gc.TotalVolume() < minTrainingVolume {
+		// Skip if training DB not configured, test fixture, or illiquid game.
+		if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 			return
 		}
 		hs, ok := gc.Game.(*hockeyState.HockeyState)
 		if !ok {
 			return
 		}
+		// Don't record score changes until Pinnacle live odds have arrived;
+		// without a reference price the row has no useful odds context.
 		if status == "Score Change" && !hs.PinnacleUpdated {
 			return
 		}
@@ -463,6 +464,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
 	printGame(gc, "Red Card")
 
+	// Skip if training DB not configured, test fixture, or illiquid game.
 	if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 		return
 	}
@@ -487,6 +489,7 @@ func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
 	}
 	printGame(gc, label)
 
+	// Skip if training DB not configured, test fixture, or illiquid game.
 	if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 		return
 	}
@@ -588,7 +591,7 @@ func regulationOutcome(ss *soccerState.SoccerState) string {
 	return "draw"
 }
 
-const minTrainingVolume int64 = 50_000
+const minTrainingVolume int64 = 20_000
 
 func f64Ptr(v float64) *float64 { return &v }
 
@@ -668,4 +671,3 @@ func hockeyOutcome(homeScore, awayScore int) string {
 	}
 	return "shootout"
 }
-

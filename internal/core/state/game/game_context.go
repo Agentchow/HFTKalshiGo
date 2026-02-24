@@ -27,6 +27,10 @@ type Fill struct {
 
 // GameContext is the single source of truth for one game.
 //
+// A GameContext is created only when a GoalServe game is successfully
+// matched to a Kalshi market — not by a Kalshi ticker alone, and not
+// by a GoalServe webhook alone. Both sides must match.
+//
 // All state mutations are serialized through an inbox channel — one
 // goroutine drains it, so no mutexes are needed on any field.
 //

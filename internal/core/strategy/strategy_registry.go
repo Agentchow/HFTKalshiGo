@@ -8,13 +8,11 @@ import (
 	"github.com/charleschow/hft-trading/internal/events"
 )
 
-// EvalResult is returned by Evaluate. It carries order intents plus
-// flags the engine uses to fire sport-specific change callbacks.
+// EvalResult is returned by Evaluate. It carries order intents for the
+// engine to publish. Sport-specific side effects (red card, power play
+// callbacks) are fired directly inside Evaluate.
 type EvalResult struct {
-	Intents        []events.OrderIntent
-	RedCardChanged bool
-	RedCardsHome   int
-	RedCardsAway   int
+	Intents []events.OrderIntent
 }
 
 // Strategy is the interface each sport must implement.

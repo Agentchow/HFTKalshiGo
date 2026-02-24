@@ -120,11 +120,11 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 			val  float64
 		}{
 			{homeShort, "YES", edgeHomeYes},
-			{awayShort, "YES", edgeAwayYes},
 			{"Tie", "YES", edgeDrawYes},
+			{awayShort, "YES", edgeAwayYes},
 			{homeShort, "NO", edgeHomeNo},
-			{awayShort, "NO", edgeAwayNo},
 			{"Tie", "NO", edgeDrawNo},
+			{awayShort, "NO", edgeAwayNo},
 		} {
 			if e.val >= 3.0 {
 				edges = append(edges, fmt.Sprintf("%s %s %+.1f%%", e.name, e.side, e.val))

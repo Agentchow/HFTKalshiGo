@@ -70,6 +70,7 @@ var seriesToLeague = map[string]string{
 	"KXLIIGAGAME":           "Liiga",
 	"KXELHGAME":             "ELH",
 	"KXNLGAME":              "NL",
+	"KXDELGAME":             "DEL",
 	"KXNFLGAME":             "NFL",
 	"KXNCAAFGAME":           "NCAAF",
 }

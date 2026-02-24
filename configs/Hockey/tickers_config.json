@@ -1,5 +1,5 @@
 {
-  "series_tickers": ["kxahlgame", "kxnhlgame", "kxkhlgame", "kxshlgame", "kxliigagame", "kxelhgame", "kxnlgame", "KXWOMHOCKEY", "KXWOWHOCKEY"],
+  "series_tickers": ["kxahlgame", "kxnhlgame", "kxkhlgame", "kxshlgame", "kxliigagame", "kxelhgame", "kxnlgame", "kxdelgame", "KXWOMHOCKEY", "KXWOWHOCKEY"],
   "market_tickers": [],
   "event_tickers": [],
   "slug": ""

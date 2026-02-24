@@ -81,6 +81,17 @@ func (h *HockeyState) GetTimeRemaining() float64 { return h.TimeLeft }
 func (h *HockeyState) HasLiveData() bool         { return h.hasLiveData }
 func (h *HockeyState) HasPregame() bool          { return h.PregameApplied }
 
+func (h *HockeyState) DeduplicateStatus(status string) string {
+	if status != "Overtime" {
+		return status
+	}
+	if h.OvertimeNotified {
+		return "Live"
+	}
+	h.OvertimeNotified = true
+	return status
+}
+
 func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 
 func (h *HockeyState) IsOvertime() bool {

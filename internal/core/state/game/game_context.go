@@ -90,6 +90,10 @@ type GameState interface {
 	SetTickers(home, away, draw string)
 	HasPregame() bool
 
+	// DeduplicateStatus suppresses repeated one-shot display statuses.
+	// e.g. hockey returns "Live" after the first "Overtime" notification.
+	DeduplicateStatus(status string) string
+
 	// RecalcEdge recomputes model-vs-market edge from the current
 	// model probabilities and Kalshi ticker prices.
 	RecalcEdge(tickers map[string]*TickerData)

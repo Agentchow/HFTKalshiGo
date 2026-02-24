@@ -97,6 +97,9 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		ss.UpdateRedCards(gu.HomeRedCards, gu.AwayRedCards)
 	}
 	rcChanged := ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC
+	if rcChanged && gc.OnRedCardChange != nil {
+		gc.OnRedCardChange(gc, ss.HomeRedCards, ss.AwayRedCards)
+	}
 
 	tracked := len(gc.Tickers) > 0
 
@@ -110,11 +113,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			}
 			s.lastPendingLog = time.Now()
-			return strategy.EvalResult{
-				RedCardChanged: rcChanged,
-				RedCardsHome:   ss.HomeRedCards,
-				RedCardsAway:   ss.AwayRedCards,
-			}
+			return strategy.EvalResult{}
 		case "pending":
 			if tracked && time.Since(s.lastPendingLog) >= 5*time.Second {
 				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
@@ -122,11 +121,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
-			return strategy.EvalResult{
-				RedCardChanged: rcChanged,
-				RedCardsHome:   ss.HomeRedCards,
-				RedCardsAway:   ss.AwayRedCards,
-			}
+			return strategy.EvalResult{}
 		case "rejected":
 			if tracked {
 				telemetry.Infof("[OVERTURN-REJECTED] %s vs %s (score restored to %d-%d)",
@@ -142,11 +137,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	changed := ss.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	if !changed {
-		return strategy.EvalResult{
-			RedCardChanged: rcChanged,
-			RedCardsHome:   ss.HomeRedCards,
-			RedCardsAway:   ss.AwayRedCards,
-		}
+		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
@@ -162,11 +153,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		ss.PinnacleAwayPct = &a
 	}
 
-	return strategy.EvalResult{
-		RedCardChanged: rcChanged,
-		RedCardsHome:   ss.HomeRedCards,
-		RedCardsAway:   ss.AwayRedCards,
-	}
+	return strategy.EvalResult{}
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {

@@ -145,24 +145,8 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			} else {
 				ds.GameStarted = true
 			}
-		} else if status == "Overtime" {
-			if hs, ok := gc.Game.(*hockeyState.HockeyState); ok {
-				if hs.OvertimeNotified {
-					status = "Live"
-				} else {
-					hs.OvertimeNotified = true
-				}
-			}
-		}
-
-		// ── Red card callback (soccer) ──────────────────────────
-		if result.RedCardChanged && gc.OnRedCardChange != nil {
-			gc.OnRedCardChange(gc, result.RedCardsHome, result.RedCardsAway)
-		}
-
-		// ── Power play callback (hockey) ────────────────────────
-		if gu.Sport == events.SportHockey {
-			e.handlePowerPlayUpdate(gc, &gu)
+		} else {
+			status = gc.Game.DeduplicateStatus(status)
 		}
 
 		if !gc.Game.HasPregame() {
@@ -193,46 +177,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 	})
 
 	return nil
-}
-
-// handlePowerPlayUpdate compares the parsed power play / penalty data
-// against HockeyState and fires gc.OnPowerPlayChange when it transitions.
-func (e *Engine) handlePowerPlayUpdate(gc *game.GameContext, gu *events.GameUpdateEvent) {
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok {
-		return
-	}
-
-	var homeOn, awayOn bool
-
-	if gu.PowerPlay {
-		homeDelta := gu.HomePenaltyCount - hs.HomePenaltyCount
-		awayDelta := gu.AwayPenaltyCount - hs.AwayPenaltyCount
-
-		switch {
-		case awayDelta > homeDelta:
-			homeOn = true
-		case homeDelta > awayDelta:
-			awayOn = true
-		default:
-			homeOn = hs.IsHomePowerPlay
-			awayOn = hs.IsAwayPowerPlay
-			if !homeOn && !awayOn {
-				homeOn = true
-			}
-		}
-	}
-
-	hs.HomePenaltyCount = gu.HomePenaltyCount
-	hs.AwayPenaltyCount = gu.AwayPenaltyCount
-
-	if homeOn != hs.IsHomePowerPlay || awayOn != hs.IsAwayPowerPlay {
-		hs.IsHomePowerPlay = homeOn
-		hs.IsAwayPowerPlay = awayOn
-		if gc.OnPowerPlayChange != nil {
-			gc.OnPowerPlayChange(gc, homeOn, awayOn)
-		}
-	}
 }
 
 func isFinished(period string) bool {

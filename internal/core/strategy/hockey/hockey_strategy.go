@@ -95,6 +95,8 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		}
 	}
 
+	s.updatePowerPlay(gc, hs, gu)
+
 	// Score-drop guard
 	overturn := false
 	if hs.HasLiveData() {
@@ -193,6 +195,41 @@ func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return nil
+}
+
+// updatePowerPlay compares the parsed power play / penalty data against
+// HockeyState and fires gc.OnPowerPlayChange when it transitions.
+func (s *Strategy) updatePowerPlay(gc *game.GameContext, hs *hockeyState.HockeyState, gu *events.GameUpdateEvent) {
+	var homeOn, awayOn bool
+
+	if gu.PowerPlay {
+		homeDelta := gu.HomePenaltyCount - hs.HomePenaltyCount
+		awayDelta := gu.AwayPenaltyCount - hs.AwayPenaltyCount
+
+		switch {
+		case awayDelta > homeDelta:
+			homeOn = true
+		case homeDelta > awayDelta:
+			awayOn = true
+		default:
+			homeOn = hs.IsHomePowerPlay
+			awayOn = hs.IsAwayPowerPlay
+			if !homeOn && !awayOn {
+				homeOn = true
+			}
+		}
+	}
+
+	hs.HomePenaltyCount = gu.HomePenaltyCount
+	hs.AwayPenaltyCount = gu.AwayPenaltyCount
+
+	if homeOn != hs.IsHomePowerPlay || awayOn != hs.IsAwayPowerPlay {
+		hs.IsHomePowerPlay = homeOn
+		hs.IsAwayPowerPlay = awayOn
+		if gc.OnPowerPlayChange != nil {
+			gc.OnPowerPlayChange(gc, homeOn, awayOn)
+		}
+	}
 }
 
 type edge struct {

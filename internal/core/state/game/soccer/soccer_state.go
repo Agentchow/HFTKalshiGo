@@ -81,9 +81,9 @@ func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 		AwayStrength:  0.0,
 		G0:            0,
 		TimeLeft:      999,
-		ModelHomeYes:  100,
-		ModelDrawYes:  100,
-		ModelAwayYes:  100,
+		ModelHomeYes:  0,
+		ModelDrawYes:  0,
+		ModelAwayYes:  0,
 		orderedTrades: make(map[tradeScoreKey]bool),
 	}
 }
@@ -97,6 +97,8 @@ func (s *SoccerState) GetPeriod() string         { return s.Half }
 func (s *SoccerState) GetTimeRemaining() float64 { return s.TimeLeft }
 func (s *SoccerState) HasLiveData() bool         { return s.hasLiveData }
 func (s *SoccerState) HasPregame() bool          { return s.PregameApplied }
+
+func (s *SoccerState) DeduplicateStatus(status string) string { return status }
 
 func (s *SoccerState) GoalDiff() int { return s.HomeScore - s.AwayScore }
 

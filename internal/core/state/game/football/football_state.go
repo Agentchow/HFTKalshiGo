@@ -64,6 +64,8 @@ func (f *FootballState) GetTimeRemaining() float64 { return f.TimeLeft }
 func (f *FootballState) HasLiveData() bool         { return f.hasLiveData }
 func (f *FootballState) HasPregame() bool          { return true }
 
+func (f *FootballState) DeduplicateStatus(status string) string { return status }
+
 func (f *FootballState) Lead() int { return f.HomeScore - f.AwayScore }
 
 func (f *FootballState) IsOvertime() bool {

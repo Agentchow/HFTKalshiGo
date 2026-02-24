@@ -152,10 +152,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	telemetry.Metrics.ScoreChanges.Inc()
 
 	ss.PinnacleUpdated = false
-	if gu.HomeWinPct != nil && gu.DrawPct != nil && gu.AwayWinPct != nil {
-		h := *gu.HomeWinPct * 100
+	if gu.HomeStrength != nil && gu.DrawPct != nil && gu.AwayStrength != nil {
+		h := *gu.HomeStrength * 100
 		d := *gu.DrawPct * 100
-		a := *gu.AwayWinPct * 100
+		a := *gu.AwayStrength * 100
 		ss.PinnacleUpdated = ss.PinnacleHomePct == nil || *ss.PinnacleHomePct != h
 		ss.PinnacleHomePct = &h
 		ss.PinnacleDrawPct = &d
@@ -228,12 +228,12 @@ func (s *Strategy) applyPregame(ss *soccerState.SoccerState, homeTeam, awayTeam 
 
 		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
 			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
-			ss.HomeWinPct = p.HomeWinPct
+			ss.HomeStrength = p.HomePregameStrength
 			ss.DrawPct = p.DrawPct
-			ss.AwayWinPct = p.AwayWinPct
+			ss.AwayStrength = p.AwayPregameStrength
 			ss.G0 = p.G0
 			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% D=%.1f%% A=%.1f%% G0=%.2f",
-				homeTeam, awayTeam, p.HomeWinPct*100, p.DrawPct*100, p.AwayWinPct*100, p.G0)
+				homeTeam, awayTeam, p.HomePregameStrength*100, p.DrawPct*100, p.AwayPregameStrength*100, p.G0)
 			return true
 		}
 	}

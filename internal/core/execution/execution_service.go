@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type Service struct {
 	router    *LaneRouter
 	client    OrderPlacer
 	gameStore *store.GameStateStore
+	sessionID string
 }
 
 func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameStore *store.GameStateStore) *Service {
@@ -36,6 +38,7 @@ func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameSto
 		router:    router,
 		client:    client,
 		gameStore: gameStore,
+		sessionID: strconv.FormatInt(time.Now().UnixNano(), 36),
 	}
 
 	bus.Subscribe(events.EventOrderIntent, s.onOrderIntent)
@@ -149,7 +152,7 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			Side:        intent.Side,
 			Type:        "limit",
 			Count:       1,
-			ClientID:    intent.Ticker + ":" + intent.Reason,
+			ClientID:    s.sessionID + ":" + intent.Ticker + ":" + intent.Reason,
 			TimeInForce: "good_till_canceled",
 		}
 		if intent.Side == "yes" {

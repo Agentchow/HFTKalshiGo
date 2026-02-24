@@ -24,9 +24,9 @@ type GameUpdateEvent struct {
 	GameStartUTC int64 `json:"game_start_utc,omitempty"`
 
 	// Webhook odds (Pinnacle-implied), nil if unavailable.
-	HomeWinPct *float64 `json:"home_win_pct,omitempty"`
-	DrawPct    *float64 `json:"draw_pct,omitempty"` // soccer only
-	AwayWinPct *float64 `json:"away_win_pct,omitempty"`
+	HomeStrength *float64 `json:"home_win_pct,omitempty"`
+	DrawPct      *float64 `json:"draw_pct,omitempty"` // soccer only
+	AwayStrength *float64 `json:"away_win_pct,omitempty"`
 
 	// Soccer red card counts from the current webhook snapshot.
 	HomeRedCards int `json:"home_red_cards,omitempty"`

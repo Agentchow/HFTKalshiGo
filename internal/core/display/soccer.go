@@ -68,7 +68,7 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "%s\n", divider)
 	fmt.Fprintf(&b, "  %s vs %s\n", ss.HomeTeam, ss.AwayTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.0f%%  |  Tie %.0f%%  |  %s %.0f%%  |  G0=%.2f\n",
-		"Pregame Strength:", homeShort, ss.HomeWinPct*100, ss.DrawPct*100, awayShort, ss.AwayWinPct*100, ss.G0)
+		"Pregame Strength:", homeShort, ss.HomeStrength*100, ss.DrawPct*100, awayShort, ss.AwayStrength*100, ss.G0)
 	scoreLine := fmt.Sprintf("Score %d-%d  |  %s (~%.0f min left)", ss.HomeScore, ss.AwayScore, ss.Half, ss.TimeLeft)
 	if ss.HomeRedCards > 0 || ss.AwayRedCards > 0 {
 		scoreLine += fmt.Sprintf("  |  Red Cards: H=%d A=%d", ss.HomeRedCards, ss.AwayRedCards)

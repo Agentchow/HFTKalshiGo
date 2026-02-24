@@ -44,16 +44,6 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 
 	hasTicker := hs.HomeTicker != "" || hs.AwayTicker != ""
 
-	// Pinnacle
-	pinnacle := fmt.Sprintf("%s %.1f%%  |  %s %.1f%%", homeShort, pctOrZero(hs.PinnacleHomePct), awayShort, pctOrZero(hs.PinnacleAwayPct))
-	if hs.PinnacleHomePct == nil || hs.PinnacleAwayPct == nil {
-		pinnacle = "(not available)"
-	}
-
-	// Best odds = yes ask for each side
-	bestHome := homeYes
-	bestAway := awayYes
-
 	wsTag := ""
 	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
 		wsTag = "  [WS DOWN]"
@@ -68,9 +58,12 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "%s\n", divider)
 	fmt.Fprintf(&b, "  %s vs %s\n", hs.HomeTeam, hs.AwayTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
-		"Pregame strength (Goalserve):", homeShort, hs.HomeWinPct*100, awayShort, hs.AwayWinPct*100)
+		"Pregame strength (Goalserve):", homeShort, hs.HomeStrength*100, awayShort, hs.AwayStrength*100)
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",
 		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft)
+	bestHome := homeYes
+	bestAway := awayYes
+
 	hasKalshi := homeYes > 0 || homeNo > 0 || awayYes > 0 || awayNo > 0
 	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
 		fmt.Fprintf(&b, "    *** Kalshi WS disconnected — prices stale ***\n")
@@ -86,12 +79,31 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 			fmt.Fprintf(&b, "            %-30sYes  —   |  No  —\n", awayShort+":")
 		}
 	}
-	fmt.Fprintf(&b, "    %-38s%s\n", "Pinnacle:", pinnacle)
 	if hs.ModelHomePct > 0 || hs.ModelAwayPct > 0 {
 		fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
 			"Model:", homeShort, hs.ModelHomePct, awayShort, hs.ModelAwayPct)
 	} else {
 		fmt.Fprintf(&b, "    %-38s%s\n", "Model:", "(not computed)")
+	}
+	if hasKalshi && (hs.ModelHomePct > 0 || hs.ModelAwayPct > 0) {
+		var edges []string
+		for _, e := range []struct {
+			name string
+			side string
+			val  float64
+		}{
+			{homeShort, "YES", hs.EdgeHomeYes},
+			{awayShort, "YES", hs.EdgeAwayYes},
+			{homeShort, "NO", hs.EdgeHomeNo},
+			{awayShort, "NO", hs.EdgeAwayNo},
+		} {
+			if e.val >= 3.0 {
+				edges = append(edges, fmt.Sprintf("%s %s %+.1f%%", e.name, e.side, e.val))
+			}
+		}
+		if len(edges) > 0 {
+			fmt.Fprintf(&b, "    >>> %s\n", strings.Join(edges, " | "))
+		}
 	}
 	fmt.Fprintf(&b, "%s\n", divider)
 

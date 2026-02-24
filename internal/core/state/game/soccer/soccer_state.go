@@ -18,10 +18,10 @@ type SoccerState struct {
 	Half      string  // "1st Half", "2nd Half", "Half Time", "Extra Time", etc.
 	TimeLeft  float64 // minutes remaining in regulation
 
-	HomeWinPct float64 // pregame 1X2 probs (0–1)
-	DrawPct    float64
-	AwayWinPct float64
-	G0         float64 // expected total goals
+	HomeStrength float64 // pregame 1X2 probs (0–1)
+	DrawPct      float64
+	AwayStrength float64
+	G0           float64 // expected total goals
 
 	HomeRedCards int
 	AwayRedCards int
@@ -76,9 +76,9 @@ func New(eid, league, homeTeam, awayTeam string) *SoccerState {
 		League:        league,
 		HomeTeam:      homeTeam,
 		AwayTeam:      awayTeam,
-		HomeWinPct:    0.0,
+		HomeStrength:  0.0,
 		DrawPct:       0.0,
-		AwayWinPct:    0.0,
+		AwayStrength:  0.0,
 		G0:            0,
 		TimeLeft:      999,
 		ModelHomeYes:  100,
@@ -95,8 +95,8 @@ func (s *SoccerState) GetHomeScore() int         { return s.HomeScore }
 func (s *SoccerState) GetAwayScore() int         { return s.AwayScore }
 func (s *SoccerState) GetPeriod() string         { return s.Half }
 func (s *SoccerState) GetTimeRemaining() float64 { return s.TimeLeft }
-func (s *SoccerState) HasLiveData() bool  { return s.hasLiveData }
-func (s *SoccerState) HasPregame() bool   { return s.PregameApplied }
+func (s *SoccerState) HasLiveData() bool         { return s.hasLiveData }
+func (s *SoccerState) HasPregame() bool          { return s.PregameApplied }
 
 func (s *SoccerState) GoalDiff() int { return s.HomeScore - s.AwayScore }
 

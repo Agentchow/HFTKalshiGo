@@ -216,9 +216,9 @@ type xmlOddsGroup struct {
 }
 
 type xmlOddsType struct {
-	Value      string          `xml:"value,attr"`
-	ID         string          `xml:"id,attr"`
-	Bookmakers []xmlBookmaker  `xml:"bookmaker"`
+	Value      string         `xml:"value,attr"`
+	ID         string         `xml:"id,attr"`
+	Bookmakers []xmlBookmaker `xml:"bookmaker"`
 }
 
 type xmlBookmaker struct {
@@ -299,8 +299,8 @@ func extractMoneyline2WayXML(m xmlMatch) *odds.PregameOdds {
 
 	h, a := odds.RemoveVig2(homeDec, awayDec)
 	return &odds.PregameOdds{
-		HomeWinPct: h,
-		AwayWinPct: a,
+		HomePregameStrength: h,
+		AwayPregameStrength: a,
 	}
 }
 
@@ -468,10 +468,10 @@ func extract1X2andOU(m gsMatch) *odds.PregameOdds {
 	g0 := extractG0FromOU(oddsTypes)
 
 	return &odds.PregameOdds{
-		HomeWinPct: h,
-		DrawPct:    d,
-		AwayWinPct: a,
-		G0:         g0,
+		HomePregameStrength: h,
+		DrawPct:             d,
+		AwayPregameStrength: a,
+		G0:                  g0,
 	}
 }
 

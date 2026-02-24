@@ -18,8 +18,8 @@ type HockeyState struct {
 	Period    string
 	TimeLeft  float64 // minutes remaining
 
-	HomeWinPct float64 // pregame strength (0–1)
-	AwayWinPct float64
+	HomeStrength float64 // pregame strength (0–1)
+	AwayStrength float64
 
 	HomeTicker string
 	AwayTicker string
@@ -63,8 +63,8 @@ func New(eid, league, homeTeam, awayTeam string) *HockeyState {
 		League:       league,
 		HomeTeam:     homeTeam,
 		AwayTeam:     awayTeam,
-		HomeWinPct:   0,
-		AwayWinPct:   0,
+		HomeStrength: 0,
+		AwayStrength: 0,
 		TimeLeft:     999,
 		ModelHomePct: 100,
 		ModelAwayPct: 100,
@@ -78,8 +78,8 @@ func (h *HockeyState) GetHomeScore() int         { return h.HomeScore }
 func (h *HockeyState) GetAwayScore() int         { return h.AwayScore }
 func (h *HockeyState) GetPeriod() string         { return h.Period }
 func (h *HockeyState) GetTimeRemaining() float64 { return h.TimeLeft }
-func (h *HockeyState) HasLiveData() bool  { return h.hasLiveData }
-func (h *HockeyState) HasPregame() bool   { return h.PregameApplied }
+func (h *HockeyState) HasLiveData() bool         { return h.hasLiveData }
+func (h *HockeyState) HasPregame() bool          { return h.PregameApplied }
 
 func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 
@@ -122,7 +122,6 @@ func (h *HockeyState) CheckScoreDrop(homeScore, awayScore int, confirmSec int) s
 	return h.ScoreDropTracker.CheckDrop(h.HomeScore, h.AwayScore, homeScore, awayScore, confirmSec)
 }
 
-
 func (h *HockeyState) SetTickers(home, away, _ string) {
 	h.HomeTicker = home
 	h.AwayTicker = away
@@ -134,7 +133,7 @@ func (h *HockeyState) RecalcEdge(tickers map[string]*game.TickerData) {
 	}
 	h.EdgeHomeYes = edgeFor(h.ModelHomePct, yesAsk(tickers, h.HomeTicker))
 	h.EdgeAwayYes = edgeFor(h.ModelAwayPct, yesAsk(tickers, h.AwayTicker))
-	h.EdgeHomeNo = edgeFor(120-h.ModelHomePct, noAsk(tickers, h.HomeTicker))
+	h.EdgeHomeNo = edgeFor(100-h.ModelHomePct, noAsk(tickers, h.HomeTicker))
 	h.EdgeAwayNo = edgeFor(100-h.ModelAwayPct, noAsk(tickers, h.AwayTicker))
 }
 

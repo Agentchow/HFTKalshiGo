@@ -17,8 +17,8 @@ type FootballState struct {
 	Quarter   string  // "Q1", "Q2", "Halftime", "Q3", "Q4", "OT"
 	TimeLeft  float64 // minutes remaining
 
-	HomeWinPct float64
-	AwayWinPct float64
+	HomePregameStrength float64
+	AwayPregameStrength float64
 
 	HomeTicker string
 	AwayTicker string
@@ -43,26 +43,26 @@ type scoreKey struct {
 
 func New(eid, league, homeTeam, awayTeam string) *FootballState {
 	return &FootballState{
-		EID:          eid,
-		League:       league,
-		HomeTeam:     homeTeam,
-		AwayTeam:     awayTeam,
-		HomeWinPct:   0.5,
-		AwayWinPct:   0.5,
-		TimeLeft:     60,
-		orderedSides: make(map[scoreKey]bool),
+		EID:                 eid,
+		League:              league,
+		HomeTeam:            homeTeam,
+		AwayTeam:            awayTeam,
+		HomePregameStrength: 0.5,
+		AwayPregameStrength: 0.5,
+		TimeLeft:            60,
+		orderedSides:        make(map[scoreKey]bool),
 	}
 }
 
-func (f *FootballState) GetEID() string           { return f.EID }
+func (f *FootballState) GetEID() string            { return f.EID }
 func (f *FootballState) GetHomeTeam() string       { return f.HomeTeam }
 func (f *FootballState) GetAwayTeam() string       { return f.AwayTeam }
 func (f *FootballState) GetHomeScore() int         { return f.HomeScore }
 func (f *FootballState) GetAwayScore() int         { return f.AwayScore }
 func (f *FootballState) GetPeriod() string         { return f.Quarter }
 func (f *FootballState) GetTimeRemaining() float64 { return f.TimeLeft }
-func (f *FootballState) HasLiveData() bool  { return f.hasLiveData }
-func (f *FootballState) HasPregame() bool   { return true }
+func (f *FootballState) HasLiveData() bool         { return f.hasLiveData }
+func (f *FootballState) HasPregame() bool          { return true }
 
 func (f *FootballState) Lead() int { return f.HomeScore - f.AwayScore }
 

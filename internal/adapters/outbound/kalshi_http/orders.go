@@ -95,6 +95,8 @@ func (c *Client) PlaceBatchOrders(ctx context.Context, req BatchCreateOrdersRequ
 		return nil, fmt.Errorf("batch order rejected: status=%d body=%s", status, string(body))
 	}
 
+	telemetry.Infof("[DEBUG] batch response status=%d body=%s", status, string(body))
+
 	var resp BatchCreateOrdersResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal batch order response: %w", err)

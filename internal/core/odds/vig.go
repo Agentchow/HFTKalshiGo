@@ -4,12 +4,12 @@ import "math"
 
 // PregameOdds holds vig-free 1X2 probabilities and expected total goals for one match.
 type PregameOdds struct {
-	HomeTeam   string
-	AwayTeam   string
-	HomeWinPct float64 // 0–1
-	DrawPct    float64 // 0–1
-	AwayWinPct float64 // 0–1
-	G0         float64 // expected total goals
+	HomeTeam            string
+	AwayTeam            string
+	HomePregameStrength float64 // 0–1
+	DrawPct             float64 // 0–1
+	AwayPregameStrength float64 // 0–1
+	G0                  float64 // expected total goals
 }
 
 // RemoveVig2 converts two-way decimal odds to fair probabilities

@@ -17,19 +17,19 @@ import (
 //	  "events": { "<eid>": { "info": {...}, "team_info": {...}, "odds": {...} } }
 //	}
 type WebhookPayload struct {
-	Updated   string                    `json:"updated"`
-	UpdatedTS int64                     `json:"updated_ts"`
-	Events    map[string]WebhookEvent   `json:"events"`
+	Updated   string                  `json:"updated"`
+	UpdatedTS int64                   `json:"updated_ts"`
+	Events    map[string]WebhookEvent `json:"events"`
 }
 
 // WebhookEvent is a single game within the webhook payload.
 type WebhookEvent struct {
-	Info     EventInfo                  `json:"info"`
-	TeamInfo TeamInfo                   `json:"team_info"`
-	Odds     map[string]OddsMarket      `json:"odds"`
-	Core     map[string]string          `json:"core"`
-	Stats    map[string]any             `json:"stats"`
-	STS      string                     `json:"sts"`
+	Info     EventInfo             `json:"info"`
+	TeamInfo TeamInfo              `json:"team_info"`
+	Odds     map[string]OddsMarket `json:"odds"`
+	Core     map[string]string     `json:"core"`
+	Stats    map[string]any        `json:"stats"`
+	STS      string                `json:"sts"`
 }
 
 type EventInfo struct {
@@ -116,13 +116,13 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			Period:       period,
 			TimeLeft:     p.calcTimeRemaining(period, ev.Info.Minute, ev.Info.Seconds),
 			GameStartUTC: parseStartTsUTC(ev.Info.StartTsUTC),
-			HomeRedCards:  homeRC,
-			AwayRedCards:  awayRC,
+			HomeRedCards: homeRC,
+			AwayRedCards: awayRC,
 		}
 		if odds != nil {
-			gu.HomeWinPct = odds.HomeWinPct
+			gu.HomeStrength = odds.HomePregameStrength
 			gu.DrawPct = odds.DrawPct
-			gu.AwayWinPct = odds.AwayWinPct
+			gu.AwayStrength = odds.AwayPregameStrength
 		}
 
 		gu.MatchStatus = p.inferMatchStatus(&ev, homeScore, awayScore, period)
@@ -321,9 +321,9 @@ func parsePeriodClock(seconds string, defaultVal float64) float64 {
 
 // ParsedOdds holds vig-free implied probabilities extracted from a webhook event.
 type ParsedOdds struct {
-	HomeWinPct *float64
-	DrawPct    *float64 // nil for hockey
-	AwayWinPct *float64
+	HomePregameStrength *float64
+	DrawPct             *float64 // nil for hockey
+	AwayPregameStrength *float64
 }
 
 // parseOdds extracts vig-free moneyline probabilities from the event's odds map.
@@ -386,8 +386,8 @@ func (p *Parser) parseOdds(ev *WebhookEvent) *ParsedOdds {
 		}
 		homeProb, awayProb := removeVig2(homeDec, awayDec)
 		return &ParsedOdds{
-			HomeWinPct: &homeProb,
-			AwayWinPct: &awayProb,
+			HomePregameStrength: &homeProb,
+			AwayPregameStrength: &awayProb,
 		}
 	}
 
@@ -400,9 +400,9 @@ func (p *Parser) parseOdds(ev *WebhookEvent) *ParsedOdds {
 	}
 	h, d, a := removeVig3(homeDec, drawDec, awayDec)
 	return &ParsedOdds{
-		HomeWinPct: &h,
-		DrawPct:    &d,
-		AwayWinPct: &a,
+		HomePregameStrength: &h,
+		DrawPct:             &d,
+		AwayPregameStrength: &a,
 	}
 }
 

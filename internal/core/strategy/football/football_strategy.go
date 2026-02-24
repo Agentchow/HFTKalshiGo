@@ -56,9 +56,9 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	if gu.HomeWinPct != nil && gu.AwayWinPct != nil {
-		h := *gu.HomeWinPct * 100
-		a := *gu.AwayWinPct * 100
+	if gu.HomeStrength != nil && gu.AwayStrength != nil {
+		h := *gu.HomeStrength * 100
+		a := *gu.AwayStrength * 100
 		fs.ModelHomePct = h
 		fs.ModelAwayPct = a
 	}

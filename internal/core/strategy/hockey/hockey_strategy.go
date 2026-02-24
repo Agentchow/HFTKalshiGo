@@ -130,9 +130,9 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	telemetry.Metrics.ScoreChanges.Inc()
 
 	hs.PinnacleUpdated = false
-	if gu.HomeWinPct != nil && gu.AwayWinPct != nil {
-		h := *gu.HomeWinPct * 100
-		a := *gu.AwayWinPct * 100
+	if gu.HomeStrength != nil && gu.AwayStrength != nil {
+		h := *gu.HomeStrength * 100
+		a := *gu.AwayStrength * 100
 		hs.PinnacleUpdated = hs.PinnacleHomePct == nil || *hs.PinnacleHomePct != h
 		hs.PinnacleHomePct = &h
 		hs.PinnacleAwayPct = &a
@@ -171,8 +171,8 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 		return
 	}
 
-	hs.ModelHomePct = ProjectedOdds(hs.HomeWinPct, hs.TimeLeft, lead) * 100
-	hs.ModelAwayPct = ProjectedOdds(hs.AwayWinPct, hs.TimeLeft, -lead) * 100
+	hs.ModelHomePct = ProjectedOdds(hs.HomeStrength, hs.TimeLeft, lead) * 100
+	hs.ModelAwayPct = ProjectedOdds(hs.AwayStrength, hs.TimeLeft, -lead) * 100
 }
 
 func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
@@ -297,14 +297,14 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 
 		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
 			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
-			hs.HomeWinPct = p.HomeWinPct
-			hs.AwayWinPct = p.AwayWinPct
+			hs.HomeStrength = p.HomePregameStrength
+			hs.AwayStrength = p.AwayPregameStrength
 			if p.G0 > 0 {
 				g0 := p.G0
 				hs.PregameG0 = &g0
 			}
 			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%%",
-				homeTeam, awayTeam, p.HomeWinPct*100, p.AwayWinPct*100)
+				homeTeam, awayTeam, p.AwayPregameStrength*100, p.AwayPregameStrength*100)
 			return true
 		}
 	}

@@ -1,6 +1,6 @@
 package events
 
-// GameUpdateEvent is published on every GoalServe/Genius webhook for a game.
+// GameUpdateEvent is published on every GoalServe Webhook GeniusSports Websocket for a game.
 // Covers live updates, score changes, and game finishes in a single type.
 type GameUpdateEvent struct {
 	EID       string  `json:"eid"`

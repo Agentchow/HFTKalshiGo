@@ -91,10 +91,11 @@ func (s *Service) placeOrder(intent events.OrderIntent, webhookReceivedAt time.T
 		ClientID: intent.Ticker + ":" + intent.Reason,
 	}
 
+	// TODO: remove hardcoded 1¢ limit once strategy pricing is validated
 	if intent.Side == "yes" {
-		req.YesPrice = int(intent.LimitPct)
+		req.YesPrice = 1
 	} else {
-		req.NoPrice = int(intent.LimitPct)
+		req.NoPrice = 1
 	}
 
 	if !webhookReceivedAt.IsZero() {
@@ -126,7 +127,7 @@ func (s *Service) placeOrder(intent events.OrderIntent, webhookReceivedAt time.T
 			OrderID:   resp.Order.OrderID,
 			Ticker:    intent.Ticker,
 			Side:      intent.Side,
-			CostCents: int(intent.LimitPct),
+			CostCents: 1,
 		})
 	})
 }

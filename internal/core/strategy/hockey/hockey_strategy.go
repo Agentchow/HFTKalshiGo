@@ -140,7 +140,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	s.computeModel(hs)
 
 	return strategy.EvalResult{
-		Intents: s.checkEdges(gc, hs),
+		Intents: s.buildOrderIntent(gc, hs, s.findEdges(hs)),
 	}
 }
 
@@ -184,15 +184,7 @@ func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
 	if !ok {
 		return false
 	}
-	for _, e := range []float64{
-		hs.EdgeHomeYes, hs.EdgeAwayYes,
-		hs.EdgeHomeNo, hs.EdgeAwayNo,
-	} {
-		if e >= discrepancyPct {
-			return true
-		}
-	}
-	return false
+	return len(s.findEdges(hs)) > 0
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
@@ -200,47 +192,54 @@ func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	if !ok || !hs.HasLiveData() || hs.ModelHomePct == 0 {
 		return nil
 	}
-	return s.checkEdges(gc, hs)
+	return s.buildOrderIntent(gc, hs, s.findEdges(hs))
 }
 
-// checkEdges reads stored edge values from HockeyState and returns
-// OrderIntents for any edges above the discrepancy threshold.
-func (s *Strategy) checkEdges(gc *game.GameContext, hs *hockeyState.HockeyState) []events.OrderIntent {
-	var intents []events.OrderIntent
+type edge struct {
+	ticker   string
+	outcome  string
+	edgeVal  float64
+	modelPct float64
+}
 
-	for _, edge := range []struct {
-		ticker   string
-		outcome  string
-		edgeVal  float64
-		modelPct float64
-	}{
+// findEdges returns edges above the discrepancy threshold that haven't been ordered yet.
+func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
+	var edges []edge
+	for _, e := range []edge{
 		{hs.HomeTicker, "home", hs.EdgeHomeYes, hs.ModelHomePct},
 		{hs.AwayTicker, "away", hs.EdgeAwayYes, hs.ModelAwayPct},
 	} {
-		if edge.ticker == "" || edge.edgeVal < discrepancyPct {
+		if e.ticker == "" || e.edgeVal < discrepancyPct {
 			continue
 		}
-		if hs.HasOrdered(edge.outcome) {
+		if hs.HasOrdered(e.outcome) {
 			continue
 		}
+		edges = append(edges, e)
+	}
+	return edges
+}
 
-		td := gc.Tickers[edge.ticker]
-		hs.MarkOrdered(edge.outcome)
+// buildOrderIntent converts detected edges into OrderIntents and marks them as ordered.
+func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge) []events.OrderIntent {
+	var intents []events.OrderIntent
+	for _, e := range edges {
+		td := gc.Tickers[e.ticker]
+		hs.MarkOrdered(e.outcome)
 		intents = append(intents, events.OrderIntent{
 			Sport:     gc.Sport,
 			League:    gc.League,
 			GameID:    gc.EID,
 			EID:       gc.EID,
-			Ticker:    edge.ticker,
+			Ticker:    e.ticker,
 			Side:      "yes",
-			Outcome:   edge.outcome,
-			LimitPct:  edge.modelPct,
-			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", edge.modelPct, td.YesAsk, edge.edgeVal),
+			Outcome:   e.outcome,
+			LimitPct:  e.modelPct,
+			Reason:    fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", e.modelPct, td.YesAsk, e.edgeVal),
 			HomeScore: hs.HomeScore,
 			AwayScore: hs.AwayScore,
 		})
 	}
-
 	return intents
 }
 
@@ -366,7 +365,7 @@ func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState,
 		Ticker:    winTicker,
 		Side:      "yes",
 		Outcome:   outcome,
-		LimitPct:  99,
+		LimitPct:  1,
 		Reason:    fmt.Sprintf("game finished %d-%d", gu.HomeScore, gu.AwayScore),
 		HomeScore: gu.HomeScore,
 		AwayScore: gu.AwayScore,

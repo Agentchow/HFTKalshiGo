@@ -5,6 +5,10 @@
 # Go build
 /bin/
 /dist/
+/hockey
+/soccer
+/goalserve_mock
+/inspect_training
 
 # Runtime data
 data/

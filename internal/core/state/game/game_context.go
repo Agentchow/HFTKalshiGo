@@ -91,7 +91,7 @@ type GameState interface {
 	HasPregame() bool
 
 	// RecalcEdge recomputes model-vs-market edge from the current
-	// model/pinnacle probabilities and Kalshi ticker prices.
+	// model probabilities and Kalshi ticker prices.
 	RecalcEdge(tickers map[string]*TickerData)
 }
 

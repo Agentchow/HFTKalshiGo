@@ -63,14 +63,25 @@ type BatchCreateOrdersResponse struct {
 }
 
 type BatchCreateOrdersIndividualResponse struct {
-	Order *struct {
-		OrderID string `json:"order_id"`
-		Status  string `json:"status"`
-	} `json:"order"`
+	Order *OrderDetail `json:"order"`
 	Error *struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error"`
+}
+
+type OrderDetail struct {
+	OrderID       string `json:"order_id"`
+	Status        string `json:"status"`
+	Side          string `json:"side"`
+	YesPrice      int    `json:"yes_price"`
+	NoPrice       int    `json:"no_price"`
+	FillCount     int    `json:"fill_count"`
+	RemainingCount int   `json:"remaining_count"`
+	TakerFees     int    `json:"taker_fees"`
+	MakerFees     int    `json:"maker_fees"`
+	TakerFillCost int    `json:"taker_fill_cost"`
+	MakerFillCost int    `json:"maker_fill_cost"`
 }
 
 func (c *Client) PlaceBatchOrders(ctx context.Context, req BatchCreateOrdersRequest) (*BatchCreateOrdersResponse, error) {

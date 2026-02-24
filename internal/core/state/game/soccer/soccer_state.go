@@ -202,19 +202,15 @@ func (s *SoccerState) SetTickers(home, away, draw string) {
 }
 
 func (s *SoccerState) RecalcEdge(tickers map[string]*game.TickerData) {
-	if s.PinnacleHomePct == nil || s.PinnacleDrawPct == nil || s.PinnacleAwayPct == nil {
+	if s.ModelHomeYes == 0 && s.ModelDrawYes == 0 && s.ModelAwayYes == 0 {
 		return
 	}
-	pinnHome := *s.PinnacleHomePct
-	pinnDraw := *s.PinnacleDrawPct
-	pinnAway := *s.PinnacleAwayPct
-
-	s.EdgeHomeYes = edgeFor(pinnHome, yesAsk(tickers, s.HomeTicker))
-	s.EdgeDrawYes = edgeFor(pinnDraw, yesAsk(tickers, s.DrawTicker))
-	s.EdgeAwayYes = edgeFor(pinnAway, yesAsk(tickers, s.AwayTicker))
-	s.EdgeHomeNo = edgeFor(120-pinnHome, noAsk(tickers, s.HomeTicker))
-	s.EdgeDrawNo = edgeFor(100-pinnDraw, noAsk(tickers, s.DrawTicker))
-	s.EdgeAwayNo = edgeFor(100-pinnAway, noAsk(tickers, s.AwayTicker))
+	s.EdgeHomeYes = edgeFor(s.ModelHomeYes, yesAsk(tickers, s.HomeTicker))
+	s.EdgeDrawYes = edgeFor(s.ModelDrawYes, yesAsk(tickers, s.DrawTicker))
+	s.EdgeAwayYes = edgeFor(s.ModelAwayYes, yesAsk(tickers, s.AwayTicker))
+	s.EdgeHomeNo = edgeFor(s.ModelHomeNo, noAsk(tickers, s.HomeTicker))
+	s.EdgeDrawNo = edgeFor(s.ModelDrawNo, noAsk(tickers, s.DrawTicker))
+	s.EdgeAwayNo = edgeFor(s.ModelAwayNo, noAsk(tickers, s.AwayTicker))
 }
 
 func edgeFor(model, ask float64) float64 {

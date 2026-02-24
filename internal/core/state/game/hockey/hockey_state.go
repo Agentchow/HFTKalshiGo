@@ -53,15 +53,8 @@ type HockeyState struct {
 	OvertimeNotified bool
 
 	hasLiveData    bool
-	orderedSides   map[scoreKey]bool
 	finaled        bool
 	shootoutLogged bool
-}
-
-type scoreKey struct {
-	side      string
-	homeScore int
-	awayScore int
 }
 
 func New(eid, league, homeTeam, awayTeam string) *HockeyState {
@@ -75,7 +68,6 @@ func New(eid, league, homeTeam, awayTeam string) *HockeyState {
 		TimeLeft:     999,
 		ModelHomePct: 100,
 		ModelAwayPct: 100,
-		orderedSides: make(map[scoreKey]bool),
 	}
 }
 
@@ -130,17 +122,6 @@ func (h *HockeyState) CheckScoreDrop(homeScore, awayScore int, confirmSec int) s
 	return h.ScoreDropTracker.CheckDrop(h.HomeScore, h.AwayScore, homeScore, awayScore, confirmSec)
 }
 
-func (h *HockeyState) HasOrdered(side string) bool {
-	return h.orderedSides[scoreKey{side: side, homeScore: h.HomeScore, awayScore: h.AwayScore}]
-}
-
-func (h *HockeyState) MarkOrdered(side string) {
-	h.orderedSides[scoreKey{side: side, homeScore: h.HomeScore, awayScore: h.AwayScore}] = true
-}
-
-func (h *HockeyState) ClearOrdered() {
-	h.orderedSides = make(map[scoreKey]bool)
-}
 
 func (h *HockeyState) SetTickers(home, away, _ string) {
 	h.HomeTicker = home

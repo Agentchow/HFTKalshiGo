@@ -63,6 +63,10 @@ type OrderIntent struct {
 	// Context for idempotency: orders are deduped per (ticker, home_score, away_score).
 	HomeScore int `json:"home_score"`
 	AwayScore int `json:"away_score"`
+
+	// Overturn is set after a confirmed score drop/reversal, allowing the
+	// execution layer to bypass idempotency for this intent.
+	Overturn bool `json:"overturn,omitempty"`
 }
 
 // WSStatusEvent signals Kalshi WebSocket connect/disconnect to sport processes.

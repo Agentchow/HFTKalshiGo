@@ -166,6 +166,9 @@ func discoverGames() (soccer *gameInfo, hockey *gameInfo) {
 }
 
 func findGame(ctx context.Context, client *kalshi_http.Client, seriesList []string, isSoccer bool) *gameInfo {
+	now := time.Now()
+	cutoff := now.Add(24 * time.Hour)
+
 	for _, series := range seriesList {
 		markets, err := client.GetMarkets(ctx, series)
 		if err != nil {
@@ -184,6 +187,11 @@ func findGame(ctx context.Context, client *kalshi_http.Client, seriesList []stri
 		}
 
 		for eventTicker, group := range byEvent {
+			expiry := latestExpiry(group)
+			if expiry.IsZero() || expiry.After(cutoff) {
+				continue
+			}
+
 			home, away := extractTeamNames(group, isSoccer)
 			if home == "" || away == "" {
 				continue
@@ -192,11 +200,40 @@ func findGame(ctx context.Context, client *kalshi_http.Client, seriesList []stri
 			if league == "" {
 				league = series
 			}
-			fmt.Printf("  Found: %s vs %s (%s) [%s]\n", home, away, league, eventTicker)
+			fmt.Printf("  Found: %s vs %s (%s) [%s] expires %s\n",
+				home, away, league, eventTicker, expiry.Format("Jan 02 15:04 MST"))
 			return &gameInfo{homeTeam: home, awayTeam: away, league: league}
 		}
 	}
 	return nil
+}
+
+func latestExpiry(markets []kalshi_http.Market) time.Time {
+	var latest time.Time
+	for _, m := range markets {
+		t := parseExpiry(m.ExpectedExpirationTime)
+		if t.IsZero() {
+			t = parseExpiry(m.CloseTime)
+		}
+		if !t.IsZero() && t.After(latest) {
+			latest = t
+		}
+	}
+	return latest
+}
+
+func parseExpiry(s string) time.Time {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
 }
 
 func extractTeamNames(group []kalshi_http.Market, isSoccer bool) (home, away string) {

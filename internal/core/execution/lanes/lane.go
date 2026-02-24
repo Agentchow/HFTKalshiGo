@@ -31,19 +31,35 @@ func (l *Lane) MaxGameCents() int {
 	return l.maxGameCents
 }
 
-// Allow returns true if an order for this ticker+score is permitted.
-func (l *Lane) Allow(ticker string, homeScore, awayScore int, orderCents int) bool {
+// Reject describes why an order was blocked; empty string means allowed.
+type Reject string
+
+const (
+	RejectNone       Reject = ""
+	RejectDuplicate  Reject = "duplicate order at this score"
+	RejectSportCap   Reject = "sport spending cap reached"
+)
+
+// Check returns the reason an order would be blocked, or RejectNone if allowed.
+func (l *Lane) Check(ticker string, homeScore, awayScore int, orderCents int) Reject {
 	key := l.idempotent.Key(ticker, homeScore, awayScore)
-
 	if l.idempotent.HasSeen(key) {
-		return false
+		return RejectDuplicate
 	}
-
 	if !l.spend.CanSpend(orderCents) {
-		return false
+		return RejectSportCap
 	}
+	return RejectNone
+}
 
-	return true
+// SportSpent returns the current sport-level spend in cents.
+func (l *Lane) SportSpent() int {
+	return l.spend.TotalSpent()
+}
+
+// SportMax returns the sport-level spending cap in cents.
+func (l *Lane) SportMax() int64 {
+	return l.spend.maxCents
 }
 
 // RecordOrder marks that an order was placed for this ticker+score combo

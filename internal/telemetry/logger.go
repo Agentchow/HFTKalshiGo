@@ -55,7 +55,7 @@ func (h *prettyHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 func (h *prettyHandler) Handle(_ context.Context, r slog.Record) error {
-	ts := r.Time.Format("2006-01-02 3:04:05 PM MST")
+	ts := r.Time.Format("3:04:05.000 PM")
 
 	var prefix string
 	switch {

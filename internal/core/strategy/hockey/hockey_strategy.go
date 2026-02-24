@@ -31,8 +31,8 @@ type PregameOddsProvider interface {
 // On each score change it:
 //  1. Updates the game state
 //  2. Runs the score-drop guard
-//  3. Recomputes model probabilities (Pinnacle first, math model fallback)
-//  4. Compares model vs market and emits OrderIntents for edges
+//  3. Recomputes model probabilities (pregame strength + projected odds)
+//  4. Compares model vs Kalshi market and emits OrderIntents for edges
 type Strategy struct {
 	scoreDropConfirmSec int
 	lastPendingLog      time.Time
@@ -98,6 +98,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	}
 
 	// Score-drop guard
+	overturn := false
 	if hs.HasLiveData() {
 		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, s.scoreDropConfirmSec)
 		switch result {
@@ -114,14 +115,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 			}
 			return strategy.EvalResult{}
 		case "confirmed":
-			hs.ClearOrdered()
+			overturn = true
 			telemetry.Infof("hockey: overturn confirmed for %s -> %d-%d",
 				gu.EID, gu.HomeScore, gu.AwayScore)
 		}
 	}
 
 	changed := hs.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
-	if !changed {
+	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}
 
@@ -136,11 +137,11 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		hs.PinnacleAwayPct = &a
 	}
 
-	// Compute model: Pinnacle first, math model fallback
 	s.computeModel(hs)
+	hs.RecalcEdge(gc.Tickers)
 
 	return strategy.EvalResult{
-		Intents: s.buildOrderIntent(gc, hs, s.findEdges(hs)),
+		Intents: s.buildOrderIntent(gc, hs, s.findEdges(hs), overturn),
 	}
 }
 
@@ -153,16 +154,10 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []
 	return s.slamOrders(gc, hs, gu)
 }
 
-// computeModel sets ModelHomePct and ModelAwayPct on the game state.
-// Pinnacle odds are preferred when available; otherwise falls back
-// to the projected_odds math model.
+// computeModel sets ModelHomePct and ModelAwayPct using the pregame-strength
+// math model. Pinnacle odds are stored separately for display but not used
+// in the model or edge calculations.
 func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
-	if hs.PinnacleHomePct != nil && hs.PinnacleAwayPct != nil {
-		hs.ModelHomePct = *hs.PinnacleHomePct
-		hs.ModelAwayPct = *hs.PinnacleAwayPct
-		return
-	}
-
 	lead := float64(hs.Lead())
 	if hs.IsOvertime() && lead != 0 {
 		if lead > 0 {
@@ -196,11 +191,7 @@ func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok || !hs.HasLiveData() || hs.ModelHomePct == 0 {
-		return nil
-	}
-	return s.buildOrderIntent(gc, hs, s.findEdges(hs))
+	return nil
 }
 
 type edge struct {
@@ -210,7 +201,6 @@ type edge struct {
 	modelPct float64
 }
 
-// findEdges returns edges above the discrepancy threshold that haven't been ordered yet.
 func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
 	var edges []edge
 	for _, e := range []edge{
@@ -220,25 +210,18 @@ func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
 		if e.ticker == "" || e.edgeVal < discrepancyPct {
 			continue
 		}
-		if hs.HasOrdered(e.outcome) {
-			continue
-		}
 		edges = append(edges, e)
 	}
 	return edges
 }
 
-// buildOrderIntent converts detected edges into paired OrderIntents
-// (YES on the favored side + NO on the opposite side) and marks them as ordered.
-func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge) []events.OrderIntent {
+func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge, overturn bool) []events.OrderIntent {
 	var intents []events.OrderIntent
 	for _, e := range edges {
 		td := gc.Tickers[e.ticker]
-		hs.MarkOrdered(e.outcome)
 
 		reason := fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", e.modelPct, td.YesAsk, e.edgeVal)
 
-		// Primary: YES on the edge side
 		intents = append(intents, events.OrderIntent{
 			Sport:     gc.Sport,
 			League:    gc.League,
@@ -251,9 +234,9 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 			Reason:    reason,
 			HomeScore: hs.HomeScore,
 			AwayScore: hs.AwayScore,
+			Overturn:  overturn,
 		})
 
-		// Complement: NO on the opposite side (same directional bet)
 		oppTicker, oppOutcome := s.oppositeSide(hs, e.outcome)
 		if oppTicker != "" {
 			intents = append(intents, events.OrderIntent{
@@ -268,6 +251,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 				Reason:    reason,
 				HomeScore: hs.HomeScore,
 				AwayScore: hs.AwayScore,
+				Overturn:  overturn,
 			})
 		}
 	}

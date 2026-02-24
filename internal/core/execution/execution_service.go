@@ -2,9 +2,13 @@ package execution
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
+	"github.com/charleschow/hft-trading/internal/core/execution/lanes"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/events"
@@ -49,11 +53,19 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		return nil
 	}
 
+	// Resolve team names once for the whole batch
+	matchLabel := "? vs ?"
+	if gc, ok := s.gameStore.Get(intents[0].Sport, intents[0].GameID); ok {
+		matchLabel = fmt.Sprintf("%s vs %s",
+			shortName(gc.Game.GetHomeTeam()), shortName(gc.Game.GetAwayTeam()))
+	}
+
 	var approved []events.OrderIntent
 	for _, intent := range intents {
 		lane := s.router.Route(intent.Sport, intent.League)
 		if lane == nil {
-			telemetry.Warnf("execution: no lane for sport=%s league=%s", intent.Sport, intent.League)
+			telemetry.Warnf("[RISK-LIMIT] %s — no lane configured for %s/%s",
+				matchLabel, intent.Sport, intent.League)
 			continue
 		}
 
@@ -61,15 +73,18 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 
 		gc, gcOK := s.gameStore.Get(intent.Sport, intent.GameID)
 		if gcOK && lane.MaxGameCents() > 0 {
-			if gc.TotalExposureCents()+orderCents > lane.MaxGameCents() {
-				telemetry.Infof("execution: per-game cap reached ticker=%s game=%s spent=%d limit=%d",
-					intent.Ticker, intent.GameID, gc.TotalExposureCents(), lane.MaxGameCents())
+			spent := gc.TotalExposureCents()
+			if spent+orderCents > lane.MaxGameCents() {
+				telemetry.Infof("[RISK-LIMIT] %s — per-game cap (%d/%d¢ spent)",
+					matchLabel, spent, lane.MaxGameCents())
 				continue
 			}
 		}
 
-		if !lane.Allow(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents) {
-			telemetry.Infof("execution: blocked by lane checks ticker=%s", intent.Ticker)
+		reason := lane.Check(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
+		if reason != "" && !(reason == lanes.RejectDuplicate && intent.Overturn) {
+			telemetry.Infof("[RISK-LIMIT] %s — %s (score %d-%d)",
+				matchLabel, reason, intent.HomeScore, intent.AwayScore)
 			continue
 		}
 
@@ -86,6 +101,29 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 }
 
 func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedAt time.Time) {
+	homeTeam, awayTeam := "?", "?"
+	gc, gcOK := s.gameStore.Get(intents[0].Sport, intents[0].GameID)
+	if gcOK {
+		homeTeam = shortName(gc.Game.GetHomeTeam())
+		awayTeam = shortName(gc.Game.GetAwayTeam())
+	}
+
+	teamFor := func(outcome string) string {
+		switch outcome {
+		case "home":
+			return homeTeam
+		case "away":
+			return awayTeam
+		default:
+			return outcome
+		}
+	}
+
+	nameWidth := len(homeTeam)
+	if len(awayTeam) > nameWidth {
+		nameWidth = len(awayTeam)
+	}
+
 	var reqs []kalshi_http.CreateOrderRequest
 	for _, intent := range intents {
 		req := kalshi_http.CreateOrderRequest{
@@ -97,7 +135,6 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			ClientID:    intent.Ticker + ":" + intent.Reason,
 			TimeInForce: "good_till_canceled",
 		}
-		// TODO: remove hardcoded 1¢ limit once strategy pricing is validated
 		if intent.Side == "yes" {
 			req.YesPrice = 1
 		} else {
@@ -107,48 +144,101 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 	}
 
 	if !webhookReceivedAt.IsZero() {
-		e2e := time.Since(webhookReceivedAt)
-		telemetry.Metrics.OrderE2ELatency.Record(e2e)
-		telemetry.Infof("execution: batch e2e_latency=%s orders=%d", e2e, len(reqs))
+		telemetry.Metrics.OrderE2ELatency.Record(time.Since(webhookReceivedAt))
 	}
+
+	// ── ORDER block ──
+	ts := time.Now().Format("3:04:05.000 PM")
+	tsPrefix := fmt.Sprintf("[%s] ", ts)
+	pad := strings.Repeat(" ", len(tsPrefix))
+
+	var ob strings.Builder
+	for i, intent := range intents {
+		prefix := pad
+		if i == 0 {
+			prefix = tsPrefix
+		}
+		price := reqs[i].YesPrice
+		if intent.Side == "no" {
+			price = reqs[i].NoPrice
+		}
+		fmt.Fprintf(&ob, "%s[ORDER] %-*s  %-3s  %d contracts @ %d¢\n",
+			prefix, nameWidth, teamFor(intent.Outcome),
+			strings.ToUpper(intent.Side), reqs[i].Count, price)
+	}
+	fmt.Fprint(os.Stderr, ob.String())
 
 	resp, err := s.client.PlaceBatchOrders(context.Background(), kalshi_http.BatchCreateOrdersRequest{
 		Orders: reqs,
 	})
 	if err != nil {
-		telemetry.Errorf("execution: batch order failed: %v", err)
+		telemetry.Errorf("execution: batch FAILED: %v", err)
 		return
 	}
 
+	// ── RESPONSE block ──
+	ts = time.Now().Format("3:04:05.000 PM")
+	tsPrefix = fmt.Sprintf("[%s] ", ts)
+	pad = strings.Repeat(" ", len(tsPrefix))
+
+	var rb strings.Builder
 	for i, r := range resp.Orders {
 		if i >= len(intents) {
 			break
 		}
 		intent := intents[i]
+		name := teamFor(intent.Outcome)
+		side := strings.ToUpper(intent.Side)
+
+		prefix := pad
+		if i == 0 {
+			prefix = tsPrefix
+		}
 
 		if r.Error != nil {
-			telemetry.Errorf("execution: order failed ticker=%s: %s", intent.Ticker, r.Error.Message)
+			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  REJECTED: %s\n",
+				prefix, nameWidth, name, side, r.Error.Message)
 			continue
 		}
 		if r.Order == nil {
 			continue
 		}
 
-		telemetry.Infof("execution: order placed ticker=%s side=%s order_id=%s reason=%q",
-			intent.Ticker, intent.Side, r.Order.OrderID, intent.Reason)
+		o := r.Order
+		total := o.FillCount + o.RemainingCount
+		fillCost := o.TakerFillCost + o.MakerFillCost
+		fees := o.TakerFees + o.MakerFees
 
-		gc, ok := s.gameStore.Get(intent.Sport, intent.GameID)
-		if !ok {
+		if o.FillCount > 0 {
+			avg := float64(fillCost+fees) / float64(o.FillCount)
+			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  [%d/%d] %.1f¢ avg price\n",
+				prefix, nameWidth, name, side, o.FillCount, total, avg)
+		} else {
+			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  [0/%d] resting\n",
+				prefix, nameWidth, name, side, total)
+		}
+
+		if !gcOK {
 			continue
 		}
-		orderID := r.Order.OrderID
+		orderID := o.OrderID
+		costCents := fillCost + fees
 		gc.Send(func() {
 			gc.RecordFill(game.Fill{
 				OrderID:   orderID,
 				Ticker:    intent.Ticker,
 				Side:      intent.Side,
-				CostCents: 1,
+				CostCents: costCents,
 			})
 		})
 	}
+	fmt.Fprint(os.Stderr, rb.String())
+}
+
+func shortName(name string) string {
+	i := strings.LastIndexByte(name, ' ')
+	if i >= 0 {
+		return name[i+1:]
+	}
+	return name
 }

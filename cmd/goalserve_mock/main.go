@@ -105,8 +105,8 @@ func main() {
 	}
 
 	if hockeyGame != nil {
-		fmt.Printf("\n── Hockey: %s vs %s (%s) ──\n", hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
-		fmt.Println("  Sequence: Game Start → 1-0 → PP1 → PP end → 1-1 → PP2 → 2-1 → PP3 → 2-2 → OT → 3-2 OT → Finished\n")
+		fmt.Printf("\n── Hockey Mock 1: %s vs %s (%s) ──\n", hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
+		fmt.Println("  OT game: 0-0 → 1-0 → PP → 1-1 → PPG 2-1 → 2-2 → OT 3-2 → Finished\n")
 
 		hEid := fmt.Sprintf("MOCK-HOC-%d", time.Now().Unix())
 		runHockeyGame(hEid, hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league,
@@ -130,6 +130,12 @@ func main() {
 				{home: 3, away: 2, period: "Finished", seconds: "", sts: "", label: "FINAL 3-2 OT"},
 			},
 		)
+
+		fmt.Printf("\n── Hockey Mock 2: %s vs %s (%s) ──\n", hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
+		fmt.Println("  Overturn game: 0-0 → 1-0 → 2-0 → [3-0 overturned → back to 2-0] → 3-0 → Finished 3-0\n")
+
+		hEid2 := fmt.Sprintf("MOCK-HOC2-%d", time.Now().Unix())
+		runHockeyOverturnGame(hEid2, hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
 	} else {
 		fmt.Println("\n── No active hockey games found on Kalshi, skipping ──")
 	}
@@ -362,6 +368,79 @@ func runHockeyGame(eid, homeTeam, awayTeam, league string, frames []hockeyFrame)
 		send("/webhook/hockey", payload, i+1, len(frames), f.label)
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func runHockeyOverturnGame(eid, homeTeam, awayTeam, league string) {
+	normal := []hockeyFrame{
+		{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "Game Start (0-0)"},
+		{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
+		{home: 1, away: 0, period: "1st Period", seconds: "14:10", sts: "", label: "GOAL! 1-0"},
+		{home: 2, away: 0, period: "2nd Period", seconds: "11:30", sts: "", label: "GOAL! 2-0"},
+		{home: 3, away: 0, period: "2nd Period", seconds: "6:45", sts: "", label: "GOAL! 3-0 (will be overturned)"},
+	}
+
+	totalSteps := len(normal) + 18 + 3 // normal + overturn confirmation + post-overturn
+	step := 0
+
+	for _, f := range normal {
+		step++
+		sendHockeyFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+
+	// Score drops from 3-0 back to 2-0 — send repeatedly for 32 seconds
+	// to exceed the 30s SCORE_DROP_CONFIRM_SEC window.
+	step++
+	dropFrame := hockeyFrame{home: 2, away: 0, period: "2nd Period", seconds: "6:40", sts: "", label: "OVERTURN! 3-0 → 2-0 (pending)"}
+	sendHockeyFrame(eid, homeTeam, awayTeam, league, dropFrame, step, totalSteps)
+	time.Sleep(2 * time.Second)
+
+	for i := 0; i < 17; i++ {
+		step++
+		secs := fmt.Sprintf("6:%02d", 38-i)
+		f := hockeyFrame{home: 2, away: 0, period: "2nd Period", seconds: secs, sts: "", label: fmt.Sprintf("  confirming overturn (%ds)", (i+2)*2)}
+		sendHockeyFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+
+	// Overturn confirmed by now (36s > 30s). Score another real goal, then finish.
+	post := []hockeyFrame{
+		{home: 3, away: 0, period: "3rd Period", seconds: "8:20", sts: "", label: "GOAL! 3-0 (real this time)"},
+		{home: 3, away: 0, period: "3rd Period", seconds: "0:00", sts: "", label: "End of regulation"},
+		{home: 3, away: 0, period: "Finished", seconds: "", sts: "", label: "FINAL 3-0 (no OT)"},
+	}
+	for _, f := range post {
+		step++
+		sendHockeyFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func sendHockeyFrame(eid, homeTeam, awayTeam, league string, f hockeyFrame, step, total int) {
+	ev := map[string]any{
+		"info": map[string]any{
+			"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+			"period":       f.period,
+			"status":       f.period,
+			"seconds":      f.seconds,
+			"league":       league,
+			"category":     "hockey",
+			"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-90*time.Minute).Unix()),
+		},
+		"team_info": map[string]any{
+			"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
+			"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+		},
+		"sts": f.sts,
+	}
+
+	payload := map[string]any{
+		"updated":    time.Now().Format(time.RFC3339),
+		"updated_ts": time.Now().Unix(),
+		"events":     map[string]any{eid: ev},
+	}
+
+	send("/webhook/hockey", payload, step, total, f.label)
 }
 
 func send(path string, payload any, step, total int, label string) {

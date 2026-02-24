@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
+	"github.com/charleschow/hft-trading/internal/core/execution/lanes"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/events"
@@ -98,7 +99,7 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		}
 
 		reason := lane.Check(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
-		if reason != "" {
+		if reason != "" && !(intent.Slam && reason == lanes.RejectDuplicate) {
 			telemetry.Infof("[RISK-LIMIT] %s — %s (score %d-%d)",
 				matchLabel, reason, intent.HomeScore, intent.AwayScore)
 			continue

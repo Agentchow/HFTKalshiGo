@@ -1,9 +1,10 @@
 // goalserve_mock sends fake GoalServe webhook payloads to the local webhook
 // server (localhost:8765) to exercise the full pipeline end-to-end.
 //
-// On startup it queries the Kalshi API for active soccer and hockey markets,
-// picks one game from each sport, and uses those team names in the mock
-// webhooks. No odds are included in the payloads so Pinnacle stays nil,
+// On startup it queries the Kalshi API for active soccer, hockey, and football
+// markets, picks one game from each sport, and uses those team names in the
+// mock webhooks. Each sport runs on its own goroutine.
+// No odds are included in the payloads so Pinnacle stays nil,
 // RecalcEdge is a no-op, and no orders are placed.
 //
 // Each run uses a unique EID (timestamp-based) so the engine creates a fresh
@@ -23,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
@@ -67,6 +69,8 @@ var seriesToLeague = map[string]string{
 	"KXSHLGAME":             "SHL",
 	"KXLIIGAGAME":           "Liiga",
 	"KXELHGAME":             "ELH",
+	"KXNFLGAME":             "NFL",
+	"KXNCAAFGAME":           "NCAAF",
 }
 
 type gameInfo struct {
@@ -79,97 +83,153 @@ func main() {
 	fmt.Println("=== GoalServe Mock ===")
 	fmt.Println("Fetching active Kalshi markets...\n")
 
-	soccerGame, hockeyGame := discoverGames()
+	soccerGame, hockeyGame, footballGame := discoverGames()
 
-	// ── Soccer Mock 1: false-alarm overturn (pending → rejected) ──
+	var wg sync.WaitGroup
+
 	if soccerGame != nil {
-		fmt.Printf("── Soccer Mock 1: %s vs %s (%s) ──\n", soccerGame.homeTeam, soccerGame.awayTeam, soccerGame.league)
-		fmt.Println("  Sequence: 0-0 → 1-0 → RC → 2-0 → [false drop 1-0, rejected] → 2-1 → Finished 2-1\n")
-
-		eid := fmt.Sprintf("MOCK-SOC-%d", time.Now().Unix())
-		runSoccerGame(eid, soccerGame.homeTeam, soccerGame.awayTeam, soccerGame.league,
-			[]frame{
-				{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "Game Start (0-0, 1st min)"},
-				{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
-				{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
-				{home: 1, away: 0, period: "1st Half", minute: "23", redH: 0, redA: 0, label: "GOAL! 1-0 (23rd min)"},
-				{home: 1, away: 0, period: "1st Half", minute: "35", redH: 0, redA: 1, label: "RED CARD away (35th min)"},
-				{home: 2, away: 0, period: "2nd Half", minute: "58", redH: 0, redA: 1, label: "GOAL! 2-0 (58th min)"},
-				// False alarm: 2-0 drops to 1-0 for 8s (< 15s confirm), then restored
-				{home: 1, away: 0, period: "2nd Half", minute: "59", redH: 0, redA: 1, label: "FALSE DROP 2-0 → 1-0 (pending)"},
-				{home: 1, away: 0, period: "2nd Half", minute: "59", redH: 0, redA: 1, label: "  overturn pending (4s)"},
-				{home: 1, away: 0, period: "2nd Half", minute: "60", redH: 0, redA: 1, label: "  overturn pending (6s)"},
-				{home: 1, away: 0, period: "2nd Half", minute: "60", redH: 0, redA: 1, label: "  overturn pending (8s)"},
-				{home: 2, away: 0, period: "2nd Half", minute: "61", redH: 0, redA: 1, label: "RESTORED 2-0 (overturn rejected)"},
-				{home: 2, away: 1, period: "2nd Half", minute: "72", redH: 0, redA: 1, label: "GOAL! 2-1 (72nd min)"},
-				{home: 2, away: 1, period: "2nd Half", minute: "72", redH: 0, redA: 1, label: "  (no change)"},
-				{home: 2, away: 1, period: "Finished", minute: "90", redH: 0, redA: 1, label: "FULL TIME 2-1"},
-			},
-		)
-
-		// ── Soccer Mock 2: real overturn (pending → confirmed) ──
-		fmt.Printf("\n── Soccer Mock 2: %s vs %s (%s) ──\n", soccerGame.homeTeam, soccerGame.awayTeam, soccerGame.league)
-		fmt.Println("  Sequence: 0-0 → 1-0 → 2-0 → [2-1 overturned → back to 2-0] → 2-1 → Finished 2-1\n")
-
-		eid2 := fmt.Sprintf("MOCK-SOC2-%d", time.Now().Unix())
-		runSoccerOverturnGame(eid2, soccerGame.homeTeam, soccerGame.awayTeam, soccerGame.league)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runSoccerMocks(soccerGame)
+		}()
 	} else {
 		fmt.Println("── No active soccer games found on Kalshi, skipping ──")
 	}
 
-	// ── Hockey Mock 1: false-alarm overturn (pending → rejected) + OT ──
 	if hockeyGame != nil {
-		fmt.Printf("\n── Hockey Mock 1: %s vs %s (%s) ──\n", hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
-		fmt.Println("  OT game with false alarm: 0-0 → 1-0 → 1-1 → PPG 2-1 → [false drop 1-1, rejected] → 2-2 → OT 3-2\n")
-
-		hEid := fmt.Sprintf("MOCK-HOC-%d", time.Now().Unix())
-		runHockeyGame(hEid, hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league,
-			[]hockeyFrame{
-				{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "Game Start (0-0)"},
-				{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
-				{home: 0, away: 0, period: "1st Period", seconds: "19:26", sts: "", label: "  (warm-up)"},
-				{home: 1, away: 0, period: "1st Period", seconds: "12:45", sts: "", label: "GOAL! 1-0"},
-				{home: 1, away: 0, period: "1st Period", seconds: "8:30", sts: "Penalties=1:0|Goals on Power Play=0:0|INFO=5 ON 4|", label: "POWER PLAY #1 (home PP)"},
-				{home: 1, away: 0, period: "1st Period", seconds: "6:30", sts: "Penalties=1:0|Goals on Power Play=0:0|INFO=|", label: "PP #1 ends"},
-				{home: 1, away: 1, period: "2nd Period", seconds: "14:20", sts: "Penalties=1:0|", label: "GOAL! 1-1"},
-				{home: 1, away: 1, period: "2nd Period", seconds: "9:15", sts: "Penalties=1:1|Goals on Power Play=0:0|INFO=5 ON 4|", label: "POWER PLAY #2 (home PP)"},
-				{home: 2, away: 1, period: "2nd Period", seconds: "8:02", sts: "Penalties=1:1|Goals on Power Play=1:0|INFO=5 ON 4|", label: "PPG! 2-1 (home scores on PP)"},
-				{home: 2, away: 1, period: "2nd Period", seconds: "7:00", sts: "Penalties=1:1|Goals on Power Play=1:0|INFO=|", label: "PP #2 ends"},
-				// False alarm: 2-1 drops to 1-1 for 8s (< 15s confirm), then restored
-				{home: 1, away: 1, period: "2nd Period", seconds: "6:50", sts: "", label: "FALSE DROP 2-1 → 1-1 (pending)"},
-				{home: 1, away: 1, period: "2nd Period", seconds: "6:48", sts: "", label: "  overturn pending (4s)"},
-				{home: 1, away: 1, period: "2nd Period", seconds: "6:46", sts: "", label: "  overturn pending (6s)"},
-				{home: 1, away: 1, period: "2nd Period", seconds: "6:44", sts: "", label: "  overturn pending (8s)"},
-				{home: 2, away: 1, period: "2nd Period", seconds: "6:42", sts: "", label: "RESTORED 2-1 (overturn rejected)"},
-				{home: 2, away: 2, period: "3rd Period", seconds: "4:10", sts: "", label: "GOAL! 2-2"},
-				{home: 2, away: 2, period: "3rd Period", seconds: "0:00", sts: "", label: "End of regulation"},
-				{home: 2, away: 2, period: "Overtimer", seconds: "5:00", sts: "", label: "OVERTIME starts"},
-				{home: 3, away: 2, period: "Overtimer", seconds: "2:33", sts: "", label: "OT GOAL! 3-2 home wins"},
-				{home: 3, away: 2, period: "Finished", seconds: "", sts: "", label: "FINAL 3-2 OT"},
-			},
-		)
-
-		// ── Hockey Mock 2: real overturn (pending → confirmed) ──
-		fmt.Printf("\n── Hockey Mock 2: %s vs %s (%s) ──\n", hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
-		fmt.Println("  Overturn game: 0-0 → 1-0 → 2-0 → [3-0 overturned → back to 2-0] → 3-0 → Finished 3-0\n")
-
-		hEid2 := fmt.Sprintf("MOCK-HOC2-%d", time.Now().Unix())
-		runHockeyOverturnGame(hEid2, hockeyGame.homeTeam, hockeyGame.awayTeam, hockeyGame.league)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runHockeyMocks(hockeyGame)
+		}()
 	} else {
-		fmt.Println("\n── No active hockey games found on Kalshi, skipping ──")
+		fmt.Println("── No active hockey games found on Kalshi, skipping ──")
 	}
 
+	if footballGame != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runFootballMocks(footballGame)
+		}()
+	} else {
+		fmt.Println("── No active football games found on Kalshi, skipping ──")
+	}
+
+	wg.Wait()
 	fmt.Println("\nDone!")
 }
 
-// discoverGames queries the Kalshi API and returns the first active soccer
-// and hockey game found. Returns nil for a sport if no markets are open.
-func discoverGames() (soccer *gameInfo, hockey *gameInfo) {
+func runSoccerMocks(g *gameInfo) {
+	fmt.Printf("── Soccer Mock 1: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  Sequence: 0-0 → 1-0 → RC → 2-0 → [false drop 1-0, rejected] → 2-1 → Finished 2-1\n")
+
+	eid := fmt.Sprintf("MOCK-SOC-%d", time.Now().Unix())
+	runSoccerGame(eid, g.homeTeam, g.awayTeam, g.league,
+		[]frame{
+			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "Game Start (0-0, 1st min)"},
+			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
+			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
+			{home: 1, away: 0, period: "1st Half", minute: "23", redH: 0, redA: 0, label: "GOAL! 1-0 (23rd min)"},
+			{home: 1, away: 0, period: "1st Half", minute: "35", redH: 0, redA: 1, label: "RED CARD away (35th min)"},
+			{home: 2, away: 0, period: "2nd Half", minute: "58", redH: 0, redA: 1, label: "GOAL! 2-0 (58th min)"},
+			{home: 1, away: 0, period: "2nd Half", minute: "59", redH: 0, redA: 1, label: "FALSE DROP 2-0 → 1-0 (pending)"},
+			{home: 1, away: 0, period: "2nd Half", minute: "59", redH: 0, redA: 1, label: "  overturn pending (4s)"},
+			{home: 1, away: 0, period: "2nd Half", minute: "60", redH: 0, redA: 1, label: "  overturn pending (6s)"},
+			{home: 1, away: 0, period: "2nd Half", minute: "60", redH: 0, redA: 1, label: "  overturn pending (8s)"},
+			{home: 2, away: 0, period: "2nd Half", minute: "61", redH: 0, redA: 1, label: "RESTORED 2-0 (overturn rejected)"},
+			{home: 2, away: 1, period: "2nd Half", minute: "72", redH: 0, redA: 1, label: "GOAL! 2-1 (72nd min)"},
+			{home: 2, away: 1, period: "2nd Half", minute: "72", redH: 0, redA: 1, label: "  (no change)"},
+			{home: 2, away: 1, period: "Finished", minute: "90", redH: 0, redA: 1, label: "FULL TIME 2-1"},
+		},
+	)
+
+	fmt.Printf("\n── Soccer Mock 2: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  Sequence: 0-0 → 1-0 → 2-0 → [2-1 overturned → back to 2-0] → 2-1 → Finished 2-1\n")
+
+	eid2 := fmt.Sprintf("MOCK-SOC2-%d", time.Now().Unix())
+	runSoccerOverturnGame(eid2, g.homeTeam, g.awayTeam, g.league)
+}
+
+func runHockeyMocks(g *gameInfo) {
+	fmt.Printf("── Hockey Mock 1: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  OT game with false alarm: 0-0 → 1-0 → 1-1 → PPG 2-1 → [false drop 1-1, rejected] → 2-2 → OT 3-2\n")
+
+	hEid := fmt.Sprintf("MOCK-HOC-%d", time.Now().Unix())
+	runHockeyGame(hEid, g.homeTeam, g.awayTeam, g.league,
+		[]hockeyFrame{
+			{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "Game Start (0-0)"},
+			{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
+			{home: 0, away: 0, period: "1st Period", seconds: "19:26", sts: "", label: "  (warm-up)"},
+			{home: 1, away: 0, period: "1st Period", seconds: "12:45", sts: "", label: "GOAL! 1-0"},
+			{home: 1, away: 0, period: "1st Period", seconds: "8:30", sts: "Penalties=1:0|Goals on Power Play=0:0|INFO=5 ON 4|", label: "POWER PLAY #1 (home PP)"},
+			{home: 1, away: 0, period: "1st Period", seconds: "6:30", sts: "Penalties=1:0|Goals on Power Play=0:0|INFO=|", label: "PP #1 ends"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "14:20", sts: "Penalties=1:0|", label: "GOAL! 1-1"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "9:15", sts: "Penalties=1:1|Goals on Power Play=0:0|INFO=5 ON 4|", label: "POWER PLAY #2 (home PP)"},
+			{home: 2, away: 1, period: "2nd Period", seconds: "8:02", sts: "Penalties=1:1|Goals on Power Play=1:0|INFO=5 ON 4|", label: "PPG! 2-1 (home scores on PP)"},
+			{home: 2, away: 1, period: "2nd Period", seconds: "7:00", sts: "Penalties=1:1|Goals on Power Play=1:0|INFO=|", label: "PP #2 ends"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "6:50", sts: "", label: "FALSE DROP 2-1 → 1-1 (pending)"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "6:48", sts: "", label: "  overturn pending (4s)"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "6:46", sts: "", label: "  overturn pending (6s)"},
+			{home: 1, away: 1, period: "2nd Period", seconds: "6:44", sts: "", label: "  overturn pending (8s)"},
+			{home: 2, away: 1, period: "2nd Period", seconds: "6:42", sts: "", label: "RESTORED 2-1 (overturn rejected)"},
+			{home: 2, away: 2, period: "3rd Period", seconds: "4:10", sts: "", label: "GOAL! 2-2"},
+			{home: 2, away: 2, period: "3rd Period", seconds: "0:00", sts: "", label: "End of regulation"},
+			{home: 2, away: 2, period: "Overtimer", seconds: "5:00", sts: "", label: "OVERTIME starts"},
+			{home: 3, away: 2, period: "Overtimer", seconds: "2:33", sts: "", label: "OT GOAL! 3-2 home wins"},
+			{home: 3, away: 2, period: "Finished", seconds: "", sts: "", label: "FINAL 3-2 OT"},
+		},
+	)
+
+	fmt.Printf("\n── Hockey Mock 2: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  Overturn game: 0-0 → 1-0 → 2-0 → [3-0 overturned → back to 2-0] → 3-0 → Finished 3-0\n")
+
+	hEid2 := fmt.Sprintf("MOCK-HOC2-%d", time.Now().Unix())
+	runHockeyOverturnGame(hEid2, g.homeTeam, g.awayTeam, g.league)
+}
+
+func runFootballMocks(g *gameInfo) {
+	fmt.Printf("── Football Mock 1: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  Sequence: 0-0 → FG 3-0 → TD 10-0 → FG 10-3 → TD 10-10 → [false drop 3-10, rejected] → FG 13-10 → TD 20-10 → Finished 20-10")
+
+	eid := fmt.Sprintf("MOCK-FB-%d", time.Now().Unix())
+	runFootballGame(eid, g.homeTeam, g.awayTeam, g.league,
+		[]footballFrame{
+			{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "Game Start (0-0)"},
+			{home: 0, away: 0, period: "1st Quarter", seconds: "14:55", label: "  (warm-up)"},
+			{home: 0, away: 0, period: "1st Quarter", seconds: "14:50", label: "  (warm-up)"},
+			{home: 3, away: 0, period: "1st Quarter", seconds: "8:22", label: "FG! 3-0"},
+			{home: 10, away: 0, period: "2nd Quarter", seconds: "11:45", label: "TD+XP! 10-0"},
+			{home: 10, away: 3, period: "2nd Quarter", seconds: "4:30", label: "FG! 10-3"},
+			{home: 10, away: 10, period: "3rd Quarter", seconds: "6:15", label: "TD+XP! 10-10"},
+			{home: 3, away: 10, period: "3rd Quarter", seconds: "5:50", label: "FALSE DROP 10-10 → 3-10 (pending)"},
+			{home: 3, away: 10, period: "3rd Quarter", seconds: "5:48", label: "  overturn pending (4s)"},
+			{home: 3, away: 10, period: "3rd Quarter", seconds: "5:46", label: "  overturn pending (6s)"},
+			{home: 3, away: 10, period: "3rd Quarter", seconds: "5:44", label: "  overturn pending (8s)"},
+			{home: 10, away: 10, period: "3rd Quarter", seconds: "5:42", label: "RESTORED 10-10 (overturn rejected)"},
+			{home: 13, away: 10, period: "4th Quarter", seconds: "9:10", label: "FG! 13-10"},
+			{home: 20, away: 10, period: "4th Quarter", seconds: "2:05", label: "TD+XP! 20-10"},
+			{home: 20, away: 10, period: "4th Quarter", seconds: "0:00", label: "End of regulation"},
+			{home: 20, away: 10, period: "Finished", seconds: "", label: "FINAL 20-10"},
+		},
+	)
+
+	fmt.Printf("\n── Football Mock 2: %s vs %s (%s) ──\n", g.homeTeam, g.awayTeam, g.league)
+	fmt.Println("  Overturn game: 0-0 → TD 7-0 → TD 14-0 → [TD 21-0 overturned → back to 14-0] → TD 21-0 → Finished 21-0")
+
+	eid2 := fmt.Sprintf("MOCK-FB2-%d", time.Now().Unix())
+	runFootballOverturnGame(eid2, g.homeTeam, g.awayTeam, g.league)
+}
+
+// discoverGames queries the Kalshi API and returns the first active soccer,
+// hockey, and football game found. Returns nil for a sport if no markets are open.
+func discoverGames() (soccer, hockey, football *gameInfo) {
 	cfg := config.Load()
 	signer, err := kalshi_auth.NewSignerFromFile(cfg.KalshiKeyID, cfg.KalshiKeyFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kalshi auth error: %v\n", err)
-		return nil, nil
+		return nil, nil, nil
 	}
 	client := kalshi_http.NewClient(cfg.KalshiBaseURL, signer, cfg.RateDivisor)
 	ctx := context.Background()
@@ -184,9 +244,13 @@ func discoverGames() (soccer *gameInfo, hockey *gameInfo) {
 	hockeySeries := []string{
 		"KXNHLGAME", "KXAHLGAME", "KXKHLGAME", "KXSHLGAME",
 	}
+	footballSeries := []string{
+		"KXNFLGAME", "KXNCAAFGAME",
+	}
 
 	soccer = findGame(ctx, client, soccerSeries, true)
 	hockey = findGame(ctx, client, hockeySeries, false)
+	football = findGame(ctx, client, footballSeries, false)
 	return
 }
 
@@ -321,6 +385,12 @@ type hockeyFrame struct {
 	home, away      int
 	period, seconds string
 	sts             string
+	label           string
+}
+
+type footballFrame struct {
+	home, away      int
+	period, seconds string
 	label           string
 }
 
@@ -537,6 +607,83 @@ func sendHockeyFrame(eid, homeTeam, awayTeam, league string, f hockeyFrame, step
 	}
 
 	send("/webhook/hockey", payload, step, total, f.label)
+}
+
+func runFootballGame(eid, homeTeam, awayTeam, league string, frames []footballFrame) {
+	for i, f := range frames {
+		sendFootballFrame(eid, homeTeam, awayTeam, league, f, i+1, len(frames))
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func runFootballOverturnGame(eid, homeTeam, awayTeam, league string) {
+	normal := []footballFrame{
+		{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "Game Start (0-0)"},
+		{home: 0, away: 0, period: "1st Quarter", seconds: "14:55", label: "  (warm-up)"},
+		{home: 7, away: 0, period: "1st Quarter", seconds: "9:30", label: "TD+XP! 7-0"},
+		{home: 14, away: 0, period: "2nd Quarter", seconds: "7:15", label: "TD+XP! 14-0"},
+		{home: 21, away: 0, period: "3rd Quarter", seconds: "10:40", label: "TD+XP! 21-0 (will be overturned)"},
+	}
+
+	confirmFrames := 9
+	totalSteps := len(normal) + 1 + confirmFrames + 3
+	step := 0
+
+	for _, f := range normal {
+		step++
+		sendFootballFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+
+	step++
+	dropFrame := footballFrame{home: 14, away: 0, period: "3rd Quarter", seconds: "10:30", label: "OVERTURN! 21-0 → 14-0 (pending)"}
+	sendFootballFrame(eid, homeTeam, awayTeam, league, dropFrame, step, totalSteps)
+	time.Sleep(2 * time.Second)
+
+	for i := 0; i < confirmFrames; i++ {
+		step++
+		secs := fmt.Sprintf("10:%02d", 28-i)
+		f := footballFrame{home: 14, away: 0, period: "3rd Quarter", seconds: secs, label: fmt.Sprintf("  confirming overturn (%ds)", (i+2)*2)}
+		sendFootballFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+
+	post := []footballFrame{
+		{home: 21, away: 0, period: "4th Quarter", seconds: "5:20", label: "TD+XP! 21-0 (real this time)"},
+		{home: 21, away: 0, period: "4th Quarter", seconds: "0:00", label: "End of regulation"},
+		{home: 21, away: 0, period: "Finished", seconds: "", label: "FINAL 21-0"},
+	}
+	for _, f := range post {
+		step++
+		sendFootballFrame(eid, homeTeam, awayTeam, league, f, step, totalSteps)
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func sendFootballFrame(eid, homeTeam, awayTeam, league string, f footballFrame, step, total int) {
+	ev := map[string]any{
+		"info": map[string]any{
+			"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+			"period":       f.period,
+			"status":       f.period,
+			"seconds":      f.seconds,
+			"league":       league,
+			"category":     "american_football",
+			"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-60*time.Minute).Unix()),
+		},
+		"team_info": map[string]any{
+			"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
+			"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+		},
+	}
+
+	payload := map[string]any{
+		"updated":    time.Now().Format(time.RFC3339),
+		"updated_ts": time.Now().Unix(),
+		"events":     map[string]any{eid: ev},
+	}
+
+	send("/webhook/football", payload, step, total, f.label)
 }
 
 func send(path string, payload any, step, total int, label string) {

@@ -402,6 +402,7 @@ func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState,
 		Reason:    reason,
 		HomeScore: gu.HomeScore,
 		AwayScore: gu.AwayScore,
+		Slam:      true,
 	}}
 
 	if loseTicker != "" {
@@ -417,6 +418,7 @@ func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState,
 			Reason:    reason,
 			HomeScore: gu.HomeScore,
 			AwayScore: gu.AwayScore,
+			Slam:      true,
 		})
 	}
 

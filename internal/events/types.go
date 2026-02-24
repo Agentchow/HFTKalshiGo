@@ -67,6 +67,9 @@ type OrderIntent struct {
 	// Overturn is set after a confirmed score drop/reversal, allowing the
 	// execution layer to bypass idempotency for this intent.
 	Overturn bool `json:"overturn,omitempty"`
+
+	// Slam bypasses idempotency entirely (used for game-finish orders).
+	Slam bool `json:"slam,omitempty"`
 }
 
 // WSStatusEvent signals Kalshi WebSocket connect/disconnect to sport processes.

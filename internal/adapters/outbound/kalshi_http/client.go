@@ -92,6 +92,24 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 	return respBody, resp.StatusCode, nil
 }
 
+func (c *Client) WarmConnection(ctx context.Context) error {
+	const maxAttempts = 3
+	var lastErr error
+	for i := 0; i < maxAttempts; i++ {
+		_, _, err := c.Get(ctx, "/trade-api/v2/portfolio/balance")
+		if err == nil {
+			telemetry.Infof("[Kalshi] HTTP connection warm")
+			return nil
+		}
+		lastErr = err
+		telemetry.Warnf("kalshi_http: warm-up attempt %d/%d failed: %v", i+1, maxAttempts, err)
+		if i < maxAttempts-1 {
+			time.Sleep(1 * time.Second)
+		}
+	}
+	return fmt.Errorf("warm-up failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
 func (c *Client) Get(ctx context.Context, path string) ([]byte, int, error) {
 	return c.do(ctx, http.MethodGet, path, nil)
 }

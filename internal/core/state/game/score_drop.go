@@ -28,6 +28,7 @@ func (t *ScoreDropTracker) CheckDrop(curHome, curAway, newHome, newAway, confirm
 	if newTotal >= prevTotal {
 		if t.scoreDropPending {
 			t.ClearScoreDropPending()
+			return "rejected"
 		}
 		return "accept"
 	}

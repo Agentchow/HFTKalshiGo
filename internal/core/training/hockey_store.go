@@ -129,7 +129,7 @@ func OpenHockeyStore(path string) (*HockeyStore, error) {
 		return nil, fmt.Errorf("read row count: %w", err)
 	}
 
-	telemetry.Plainf("hockey training store: opened %s  db_bytes=%d  rows=%d", path, size, count)
+	telemetry.Infof("Started Hockey Training db  path=%s  db_bytes=%d  rows=%d", path, size, count)
 
 	return &HockeyStore{db: db, cachedSize: size, rowCount: count}, nil
 }

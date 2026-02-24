@@ -41,9 +41,12 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 				s.lastPendingLog = time.Now()
 			}
 			return strategy.EvalResult{}
-		case "confirmed":
-			telemetry.Infof("football: overturn confirmed for %s -> %d-%d",
+		case "rejected":
+			telemetry.Infof("[OVERTURN-REJECTED] %s (score restored to %d-%d)",
 				gu.EID, gu.HomeScore, gu.AwayScore)
+		case "confirmed":
+			telemetry.Infof("[OVERTURN-CONFIRMED] %s (%d-%d -> %d-%d)",
+				gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 		}
 	}
 

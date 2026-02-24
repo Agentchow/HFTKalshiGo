@@ -129,10 +129,15 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 				RedCardsHome:   ss.HomeRedCards,
 				RedCardsAway:   ss.AwayRedCards,
 			}
+		case "rejected":
+			if tracked {
+				telemetry.Infof("[OVERTURN-REJECTED] %s vs %s (score restored to %d-%d)",
+					ss.HomeTeam, ss.AwayTeam, gu.HomeScore, gu.AwayScore)
+			}
 		case "confirmed":
 			if tracked {
-				telemetry.Infof("soccer: overturn confirmed for %s @ %s [%s] -> %d-%d",
-					ss.AwayTeam, ss.HomeTeam, gu.EID, gu.HomeScore, gu.AwayScore)
+				telemetry.Infof("[OVERTURN-CONFIRMED] %s vs %s (%d-%d -> %d-%d)",
+					ss.HomeTeam, ss.AwayTeam, ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			}
 		}
 	}

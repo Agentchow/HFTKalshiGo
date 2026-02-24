@@ -96,7 +96,7 @@ func (c *Client) runLoop(ctx context.Context) {
 	first := true
 	for {
 		if first {
-			telemetry.Plainf("Kalshi WS connected to %s", c.url)
+			telemetry.Infof("[Kalshi] WS connected to %s", c.url)
 			first = false
 		} else {
 			telemetry.Infof("Kalshi WS reconnected")

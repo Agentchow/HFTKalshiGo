@@ -92,8 +92,8 @@ func Load() *Config {
 
 		RiskLimitsPath: envStr("RISK_LIMITS_PATH", "internal/config/risk_limits.yaml"),
 
-		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 30),
-		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 60)) * time.Second,
+		ScoreDropConfirmSec: envInt("SCORE_DROP_CONFIRM_SEC", 15),
+		ScoreResetThrottle:  time.Duration(envInt("SCORE_RESET_THROTTLE_SEC", 5)) * time.Second,
 
 		NgrokEnabled:   envStr("NGROK_ENABLED", "true") == "true",
 		NgrokAuthToken: envStr("NGROK_AUTH_TOKEN", ""),

@@ -75,7 +75,13 @@ func (l *Lane) IdempotencyKey(ticker string, homeScore, awayScore int) string {
 	return l.idempotent.Key(ticker, homeScore, awayScore)
 }
 
-// ClearIdempotency resets dedup state (e.g. after a score overturn).
+// ClearIdempotency resets all dedup state.
 func (l *Lane) ClearIdempotency() {
 	l.idempotent.Clear()
+}
+
+// ClearIdempotencyForTicker removes dedup entries for a specific ticker
+// so that all score combos for that ticker can be re-ordered after an overturn.
+func (l *Lane) ClearIdempotencyForTicker(ticker string) {
+	l.idempotent.ClearForTicker(ticker)
 }

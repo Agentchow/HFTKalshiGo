@@ -142,7 +142,7 @@ func loadSeriesTickers(dir string, sport events.Sport) []string {
 	for i, t := range cfg.SeriesTickers {
 		upper[i] = strings.ToUpper(t)
 	}
-	telemetry.Infof("ticker: loaded %d series for %s", len(upper), sport)
+	telemetry.Infof("[Kalshi] ticker: loaded %d series for %s", len(upper), sport)
 	return upper
 }
 

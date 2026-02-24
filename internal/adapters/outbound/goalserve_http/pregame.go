@@ -71,7 +71,7 @@ func (c *PregameClient) FetchSoccerPregame() ([]odds.PregameOdds, error) {
 		return nil, err
 	}
 
-	telemetry.Infof("goalserve: fetched %d soccer pregame matches", len(matches))
+	telemetry.Infof("[GoalServe]: fetched %d soccer pregame matches", len(matches))
 	return matches, nil
 }
 
@@ -106,7 +106,7 @@ func (c *PregameClient) FetchHockeyPregame() ([]odds.PregameOdds, error) {
 		return nil, err
 	}
 
-	telemetry.Infof("goalserve: fetched %d hockey pregame matches", len(matches))
+	telemetry.Infof("[GoalServe]: fetched %d hockey pregame matches", len(matches))
 	return matches, nil
 }
 

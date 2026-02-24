@@ -41,11 +41,16 @@ func main() {
 
 	// ── Balance fetch ──────────────────────────────────────────
 	kalshiClient := kalshi_http.NewClient(cfg.KalshiBaseURL, kalshiSigner, cfg.RateDivisor)
+
+	if err := kalshiClient.WarmConnection(context.Background()); err != nil {
+		telemetry.Warnf("Kalshi connection warm-up failed: %v", err)
+	}
+
 	balance, err := kalshiClient.GetBalance(context.Background())
 	if err != nil {
 		telemetry.Warnf("Balance fetch failed: %v", err)
 	} else {
-		telemetry.Plainf("Kalshi balance: $%.2f", float64(balance)/100.0)
+		telemetry.Infof("[Kalshi] balance: $%.2f", float64(balance)/100.0)
 	}
 
 	// ── Fanout server ──────────────────────────────────────────

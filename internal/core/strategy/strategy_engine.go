@@ -336,7 +336,7 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	e.kalshiWSUp.Store(connected)
 
 	if connected {
-		telemetry.Infof("strategy: Kalshi WS reconnected, waiting for live prices")
+		telemetry.Infof("strategy: Kalshi WS connected, waiting for live prices")
 	} else {
 		telemetry.Warnf("strategy: Kalshi WS disconnected, resetting all ticker prices to 100")
 	}
@@ -706,6 +706,10 @@ func (e *Engine) resolveTickers(gc *game.GameContext, gu events.GameUpdateEvent,
 			e.store.RegisterTicker(t, gc)
 		}
 
+		ds := e.display.Get(gc.EID)
+		if initialStatus == "Game Start" {
+			ds.GameStarted = true
+		}
 		gc.SetMatchStatus(initialStatus)
 
 		if gc.Game.HasPregame() {

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
-	"github.com/charleschow/hft-trading/internal/core/execution/lanes"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/events"
@@ -60,6 +59,23 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 			shortName(gc.Game.GetHomeTeam()), shortName(gc.Game.GetAwayTeam()))
 	}
 
+	// If this batch is from a confirmed overturn, clear all stale
+	// idempotency entries for the affected tickers so that scores
+	// seen before the overturn (e.g. the overturned 3-0) can be
+	// re-ordered if they occur again legitimately.
+	if intents[0].Overturn {
+		cleared := make(map[string]bool)
+		for _, intent := range intents {
+			if cleared[intent.Ticker] {
+				continue
+			}
+			if lane := s.router.Route(intent.Sport, intent.League); lane != nil {
+				lane.ClearIdempotencyForTicker(intent.Ticker)
+				cleared[intent.Ticker] = true
+			}
+		}
+	}
+
 	var approved []events.OrderIntent
 	for _, intent := range intents {
 		lane := s.router.Route(intent.Sport, intent.League)
@@ -82,7 +98,7 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		}
 
 		reason := lane.Check(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
-		if reason != "" && !(reason == lanes.RejectDuplicate && intent.Overturn) {
+		if reason != "" {
 			telemetry.Infof("[RISK-LIMIT] %s — %s (score %d-%d)",
 				matchLabel, reason, intent.HomeScore, intent.AwayScore)
 			continue
@@ -172,7 +188,7 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		Orders: reqs,
 	})
 	if err != nil {
-		telemetry.Errorf("execution: batch FAILED: %v", err)
+		telemetry.Errorf("[RESPONSE] batch FAILED: %v", err)
 		return
 	}
 
@@ -180,6 +196,11 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 	ts = time.Now().Format("3:04:05.000 PM")
 	tsPrefix = fmt.Sprintf("[%s] ", ts)
 	pad = strings.Repeat(" ", len(tsPrefix))
+
+	if len(resp.Orders) == 0 {
+		fmt.Fprintf(os.Stderr, "%s[RESPONSE] empty — Kalshi returned 0 order results\n", tsPrefix)
+		return
+	}
 
 	var rb strings.Builder
 	for i, r := range resp.Orders {
@@ -201,6 +222,8 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			continue
 		}
 		if r.Order == nil {
+			fmt.Fprintf(&rb, "%s[RESPONSE] %-*s  %-3s  (nil order, nil error)\n",
+				prefix, nameWidth, name, side)
 			continue
 		}
 

@@ -35,9 +35,22 @@ func (g *IdempotencyGuard) Record(key string) {
 	g.seen[key] = true
 }
 
-// Clear resets all dedup state (e.g. after a confirmed score overturn).
+// Clear resets all dedup state.
 func (g *IdempotencyGuard) Clear() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.seen = make(map[string]bool)
+}
+
+// ClearForTicker removes all dedup entries for a specific ticker
+// (all score combinations), used after a confirmed score overturn.
+func (g *IdempotencyGuard) ClearForTicker(ticker string) {
+	prefix := ticker + ":"
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for k := range g.seen {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			delete(g.seen, k)
+		}
+	}
 }

@@ -158,10 +158,18 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			ClientID:    clientID,
 			TimeInForce: "good_till_canceled",
 		}
+		priceCents := intent.LimitPct
+		if priceCents < 1 {
+			priceCents = 1
+		}
+		if priceCents > 99 {
+			priceCents = 99
+		}
+		priceDollars := fmt.Sprintf("%.4f", priceCents/100.0)
 		if intent.Side == "yes" {
-			req.YesPriceDollars = "0.0100"
+			req.YesPriceDollars = priceDollars
 		} else {
-			req.NoPriceDollars = "0.0100"
+			req.NoPriceDollars = priceDollars
 		}
 		reqs = append(reqs, req)
 	}

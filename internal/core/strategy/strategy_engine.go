@@ -334,6 +334,9 @@ func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport
 }
 
 func printGame(gc *game.GameContext, eventType string) {
+	if gc.KalshiEventURL == "" {
+		return
+	}
 	switch gc.Sport {
 	case events.SportHockey:
 		display.PrintHockey(gc, eventType)

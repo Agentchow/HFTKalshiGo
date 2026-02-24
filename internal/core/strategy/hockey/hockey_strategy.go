@@ -253,6 +253,8 @@ func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
 	return edges
 }
 
+// buildOrderIntent creates order intents for detected edges.
+// Limit prices are set 3¢ below model probability as a buffer.
 func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge, overturn bool) []events.OrderIntent {
 	var intents []events.OrderIntent
 	for _, e := range edges {
@@ -268,7 +270,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 			Ticker:    e.ticker,
 			Side:      "yes",
 			Outcome:   e.outcome,
-			LimitPct:  e.modelPct,
+			LimitPct:  e.modelPct - 3,
 			Reason:    reason,
 			HomeScore: hs.HomeScore,
 			AwayScore: hs.AwayScore,
@@ -285,7 +287,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 				Ticker:    oppTicker,
 				Side:      "no",
 				Outcome:   oppOutcome,
-				LimitPct:  100 - e.modelPct,
+				LimitPct:  100 - e.modelPct - 3,
 				Reason:    reason,
 				HomeScore: hs.HomeScore,
 				AwayScore: hs.AwayScore,

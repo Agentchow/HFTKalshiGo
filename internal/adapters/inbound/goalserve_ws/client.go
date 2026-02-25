@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -68,6 +69,9 @@ func (c *Client) ConnectWithRetry(ctx context.Context) {
 		if backoff > maxBackoff {
 			backoff = maxBackoff
 		}
+		if err != nil && strings.Contains(err.Error(), "auth:") {
+			backoff = tokenCooldown
+		}
 
 		if err != nil {
 			telemetry.Warnf("goalserve_ws[%s]: connection lost (attempt %d): %v — retrying in %s",
@@ -91,6 +95,7 @@ func (c *Client) connect(ctx context.Context) error {
 	url := fmt.Sprintf("%s/%s?tkn=%s", c.wsBaseURL, c.sport, token)
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
 	if err != nil {
+		c.tokenProvider.Invalidate()
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()

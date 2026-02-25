@@ -91,10 +91,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 	}
 
 	gc.Send(func() {
-		// Always apply the latest score/period/time before any logic path,
-		// so a restart doesn't leave defaults (0-0, 999 min) on display.
-		gc.Game.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
-
 		// ── Finish path ─────────────────────────────────────────
 		if isFinished(gu.Period) {
 			ds := e.display.Get(gc.EID)
@@ -122,6 +118,7 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			return
 		}
 
+		hadLIVEData := gc.Game.HasLIVEData()
 		prevHome := gc.Game.GetHomeScore()
 		prevAway := gc.Game.GetAwayScore()
 
@@ -130,7 +127,9 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		e.publishIntents(result.Intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
 
 		// ── MatchStatus ─────────────────────────────────────────
-		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
+		// Only flag a score change when the game already had LIVE data;
+		// the first event after a restart initialises from 0-0 defaults.
+		scoreChanged := hadLIVEData && (gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway)
 		status := gu.MatchStatus
 		if scoreChanged {
 			status = events.StatusScoreChange

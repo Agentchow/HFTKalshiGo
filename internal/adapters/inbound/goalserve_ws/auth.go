@@ -56,10 +56,15 @@ func (tp *TokenProvider) loadCache() {
 	if err := json.Unmarshal(raw, &cached); err != nil {
 		return
 	}
-	if cached.Token != "" && time.Since(cached.FetchedAt) < tokenMaxAge {
+	if cached.Token != "" {
 		tp.token = cached.Token
 		tp.fetchedAt = cached.FetchedAt
-		telemetry.Infof("goalserve_ws: loaded cached token (age %s)", time.Since(cached.FetchedAt).Round(time.Second))
+		age := time.Since(cached.FetchedAt).Round(time.Second)
+		if age > tokenMaxAge {
+			telemetry.Infof("goalserve_ws: loaded stale cached token (age %s) — will try before re-auth", age)
+		} else {
+			telemetry.Infof("goalserve_ws: loaded cached token (age %s)", age)
+		}
 	}
 }
 
@@ -75,15 +80,24 @@ func (tp *TokenProvider) saveCache() {
 	_ = os.WriteFile(tp.cachePath, raw, 0o600)
 }
 
-// Token returns a cached JWT if still valid, or fetches a fresh one.
+// Invalidate clears the cached token so the next Token() call fetches a fresh one.
+func (tp *TokenProvider) Invalidate() {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.token = ""
+	tp.fetchedAt = time.Time{}
+}
+
+// Token returns a cached JWT if one exists, or fetches a fresh one.
+// A stale token is returned as-is so the caller can attempt a connection
+// without hitting the auth endpoint; call Invalidate after a rejection.
 // When rate-limited with no cached token, blocks until the cooldown expires
 // (or ctx is cancelled) instead of returning an error immediately.
-// Only one goroutine fetches per cooldown cycle; others wait and get the cached result.
 func (tp *TokenProvider) Token(ctx context.Context) (string, error) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
-	if tp.token != "" && time.Since(tp.fetchedAt) < tokenMaxAge {
+	if tp.token != "" {
 		return tp.token, nil
 	}
 
@@ -110,6 +124,7 @@ func (tp *TokenProvider) Token(ctx context.Context) (string, error) {
 	}
 
 	tp.lastTry = time.Now()
+	telemetry.Infof("goalserve_ws: fetching new token from %s", tp.authURL)
 	tok, err := fetchToken(tp.authURL, tp.apiKey)
 	if err != nil {
 		return "", err
@@ -117,6 +132,7 @@ func (tp *TokenProvider) Token(ctx context.Context) (string, error) {
 	tp.token = tok
 	tp.fetchedAt = time.Now()
 	tp.saveCache()
+	telemetry.Infof("goalserve_ws: new token acquired")
 	return tok, nil
 }
 

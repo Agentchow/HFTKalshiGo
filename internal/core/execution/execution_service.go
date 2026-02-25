@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -161,14 +162,14 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		if !intent.Slam {
 			req.ExpirationTS = time.Now().Add(10 * time.Second).Unix()
 		}
-		priceCents := intent.LimitPct
+		priceCents := math.Floor(intent.LimitPct)
 		if priceCents < 1 {
 			priceCents = 1
 		}
 		if priceCents > 99 {
 			priceCents = 99
 		}
-		priceDollars := fmt.Sprintf("%.4f", priceCents/100.0)
+		priceDollars := fmt.Sprintf("%.2f", priceCents/100.0)
 		if intent.Side == "yes" {
 			req.YesPriceDollars = priceDollars
 		} else {

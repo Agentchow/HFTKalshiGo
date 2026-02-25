@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -14,12 +16,13 @@ import (
 )
 
 const (
-	tokenMaxAge   = 55 * time.Minute  // refresh 5 min before the 60-min expiry
-	tokenCooldown = 65 * time.Second  // minimum interval between auth requests
+	tokenMaxAge   = 55 * time.Minute // refresh 5 min before the 60-min expiry
+	tokenCooldown = 65 * time.Second // minimum interval between auth requests
 )
 
 // TokenProvider caches a GoalServe JWT and rate-limits auth requests so
 // multiple WS clients sharing the same API key don't trigger 429s.
+// The token is persisted to disk so restarts don't burn an auth request.
 type TokenProvider struct {
 	mu        sync.Mutex
 	authURL   string
@@ -27,10 +30,49 @@ type TokenProvider struct {
 	token     string
 	fetchedAt time.Time
 	lastTry   time.Time
+	cachePath string
 }
 
-func NewTokenProvider(authURL, apiKey string) *TokenProvider {
-	return &TokenProvider{authURL: authURL, apiKey: apiKey}
+type tokenCache struct {
+	Token     string    `json:"token"`
+	FetchedAt time.Time `json:"fetched_at"`
+}
+
+func NewTokenProvider(authURL, apiKey, cachePath string) *TokenProvider {
+	tp := &TokenProvider{authURL: authURL, apiKey: apiKey, cachePath: cachePath}
+	tp.loadCache()
+	return tp
+}
+
+func (tp *TokenProvider) loadCache() {
+	if tp.cachePath == "" {
+		return
+	}
+	raw, err := os.ReadFile(tp.cachePath)
+	if err != nil {
+		return
+	}
+	var cached tokenCache
+	if err := json.Unmarshal(raw, &cached); err != nil {
+		return
+	}
+	if cached.Token != "" && time.Since(cached.FetchedAt) < tokenMaxAge {
+		tp.token = cached.Token
+		tp.fetchedAt = cached.FetchedAt
+		telemetry.Infof("goalserve_ws: loaded cached token (age %s)", time.Since(cached.FetchedAt).Round(time.Second))
+	}
+}
+
+func (tp *TokenProvider) saveCache() {
+	if tp.cachePath == "" {
+		return
+	}
+	raw, err := json.Marshal(tokenCache{Token: tp.token, FetchedAt: tp.fetchedAt})
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(tp.cachePath), 0o755)
+	_ = os.WriteFile(tp.cachePath, raw, 0o600)
 }
 
 // Token returns a cached JWT if still valid, or fetches a fresh one.
@@ -74,6 +116,7 @@ func (tp *TokenProvider) Token(ctx context.Context) (string, error) {
 	}
 	tp.token = tok
 	tp.fetchedAt = time.Now()
+	tp.saveCache()
 	return tok, nil
 }
 

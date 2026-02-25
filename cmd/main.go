@@ -80,7 +80,7 @@ func main() {
 			telemetry.Warnf("WS store disabled: %v", err2)
 		}
 
-		tp := goalserve_ws.NewTokenProvider(cfg.GoalserveWSAuthURL, cfg.GoalserveAPIKey)
+		tp := goalserve_ws.NewTokenProvider(cfg.GoalserveWSAuthURL, cfg.GoalserveAPIKey, "data/goalserve_token.json")
 
 		sports := strings.Split(cfg.GoalserveWSSports, ",")
 		telemetry.Plainf("GoalServe WS mode enabled  sports=%v", sports)

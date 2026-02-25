@@ -160,7 +160,7 @@ func (c *Client) handleUpdt(raw []byte) {
 
 	if !c.seenGames[msg.ID] {
 		c.seenGames[msg.ID] = true
-		telemetry.Infof("goalserve_ws[%s]: new game id=%s  %q vs %q  league=%q  pc=%d",
+		telemetry.Debugf("goalserve_ws[%s]: new game id=%s  %q vs %q  league=%q  pc=%d",
 			c.sport, msg.ID, msg.T1.Name, msg.T2.Name, msg.CmpName, msg.PC)
 	}
 

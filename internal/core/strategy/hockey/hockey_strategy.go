@@ -124,7 +124,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		}
 	}
 
-	changed := hs.UpdateScore(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
+	changed := hs.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}

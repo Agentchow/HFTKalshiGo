@@ -85,7 +85,7 @@ type GameState interface {
 	IsLIVE() bool
 	HasLIVEData() bool
 
-	UpdateScore(homeScore, awayScore int, period string, timeRemain float64) bool
+	UpdateGameState(homeScore, awayScore int, period string, timeRemain float64) bool
 	CheckScoreDrop(homeScore, awayScore int, confirmSec int) string
 	ClearScoreDropPending()
 	IsScoreDropPending() bool

@@ -141,7 +141,7 @@ func (s *SoccerState) IsLIVE() bool {
 	return s.Half != "" && !s.IsFinished()
 }
 
-func (s *SoccerState) UpdateScore(homeScore, awayScore int, half string, timeRemain float64) bool {
+func (s *SoccerState) UpdateGameState(homeScore, awayScore int, half string, timeRemain float64) bool {
 	firstUpdate := !s.hasLIVEData
 	scoreChanged := s.HomeScore != homeScore || s.AwayScore != awayScore
 

@@ -84,7 +84,7 @@ func (f *FootballState) IsLIVE() bool {
 	return f.Quarter != "" && !f.IsFinished()
 }
 
-func (f *FootballState) UpdateScore(homeScore, awayScore int, quarter string, timeRemain float64) bool {
+func (f *FootballState) UpdateGameState(homeScore, awayScore int, quarter string, timeRemain float64) bool {
 	firstUpdate := !f.hasLIVEData
 	scoreChanged := f.HomeScore != homeScore || f.AwayScore != awayScore
 

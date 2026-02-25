@@ -91,6 +91,10 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 	}
 
 	gc.Send(func() {
+		// Always apply the latest score/period/time before any logic path,
+		// so a restart doesn't leave defaults (0-0, 999 min) on display.
+		gc.Game.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
+
 		// ── Finish path ─────────────────────────────────────────
 		if isFinished(gu.Period) {
 			ds := e.display.Get(gc.EID)

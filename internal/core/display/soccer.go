@@ -77,20 +77,20 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 
 	hasKalshi := homeYes > 0 || homeNo > 0 || drawYes > 0 || drawNo > 0 || awayYes > 0 || awayNo > 0
 
-	// 3-column header
-	fmt.Fprintf(&b, "    %40s%s%12s%12s\n", "", homeShort, "TIE", awayShort)
+	// 3-column header — widths 6/13/13 match the data rows (number + suffix)
+	fmt.Fprintf(&b, "    %40s%6s%13s%13s\n", "", homeShort, "TIE", awayShort)
 	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
 		fmt.Fprintf(&b, "    *** Kalshi WS disconnected — prices stale ***\n")
 	}
 	if hasKalshi {
-		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
+		fmt.Fprintf(&b, "    %-40s%5.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
 	} else {
-		fmt.Fprintf(&b, "    %-40s%6s%12s%12s\n", "Kalshi YES:", "—", "—", "—")
+		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi YES:", "—", "—", "—")
 	}
 	if hasPinnacle {
-		fmt.Fprintf(&b, "    %-40s%3.1f%%%11.1f%%%11.1f%%\n", "Pinnacle YES:", pinnHome, pinnDraw, pinnAway)
+		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Pinnacle YES:", pinnHome, pinnDraw, pinnAway)
 		if hasKalshi {
-			fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge YES:",
+			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge YES:",
 				fmtEdge(edgeHomeYes), fmtEdge(edgeDrawYes), fmtEdge(edgeAwayYes))
 		}
 	} else {
@@ -99,14 +99,14 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 
 	fmt.Fprintf(&b, "\n")
 	if hasKalshi {
-		fmt.Fprintf(&b, "    %-40s%4.0fc%12.0fc%12.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
+		fmt.Fprintf(&b, "    %-40s%5.0fc%12.0fc%12.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
 	} else {
-		fmt.Fprintf(&b, "    %-40s%6s%12s%12s\n", "Kalshi NO:", "—", "—", "—")
+		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi NO:", "—", "—", "—")
 	}
 	if hasPinnacle {
-		fmt.Fprintf(&b, "    %-40s%3.1f%%%11.1f%%%11.1f%%\n", "Pinnacle NO:", 100-pinnHome, 100-pinnDraw, 100-pinnAway)
+		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Pinnacle NO:", 100-pinnHome, 100-pinnDraw, 100-pinnAway)
 		if hasKalshi {
-			fmt.Fprintf(&b, "    %-40s%s%12s%12s\n", "Edge NO:",
+			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge NO:",
 				fmtEdge(edgeHomeNo), fmtEdge(edgeDrawNo), fmtEdge(edgeAwayNo))
 		}
 	}

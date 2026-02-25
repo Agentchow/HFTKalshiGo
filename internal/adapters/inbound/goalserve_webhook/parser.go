@@ -241,7 +241,7 @@ func hockeyTimeRemaining(period, seconds string) float64 {
 		return periodMins + 20
 	case strings.Contains(period, "3rd"):
 		return periodMins
-	case strings.Contains(period, "OVERTIME") || period == "ot":
+	case strings.Contains(period, "overtime") || period == "ot":
 		return 5
 	case strings.Contains(period, "shootout") || strings.Contains(period, "penalties"):
 		return 0
@@ -261,7 +261,7 @@ func footballTimeRemaining(period string) float64 {
 		return 15
 	case strings.Contains(period, "q4") || strings.Contains(period, "4th quarter"):
 		return 0
-	case strings.Contains(period, "OVERTIME") || period == "ot":
+	case strings.Contains(period, "overtime") || period == "ot":
 		return 0
 	default:
 		return 60

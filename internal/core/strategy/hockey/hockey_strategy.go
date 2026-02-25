@@ -187,7 +187,7 @@ func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 }
 
 // updatePowerPlay compares the parsed power play / penalty data against
-// HockeyState and fires gc.OnPowerPlayChange when it transitions.
+// HockeyState and fires gc.Notify when the power play state transitions.
 func (s *Strategy) updatePowerPlay(gc *game.GameContext, hs *hockeyState.HockeyState, gu *events.GameUpdateEvent) {
 	var homeOn, awayOn bool
 

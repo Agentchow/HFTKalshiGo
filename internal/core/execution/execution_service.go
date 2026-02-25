@@ -163,6 +163,9 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			req.ExpirationTS = time.Now().Add(10 * time.Second).Unix()
 		}
 		priceCents := math.Floor(intent.LimitPct)
+		if strings.HasPrefix(intent.EID, "MOCK-") {
+			priceCents = 1
+		}
 		if priceCents < 1 {
 			priceCents = 1
 		}

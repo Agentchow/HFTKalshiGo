@@ -62,14 +62,16 @@ type GameContext struct {
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time
 
-	// Hooks — registered by the engine at creation time.
-	// Fired from within the game's goroutine.
-	OnMatchStatusChange func(gc *GameContext)
-	OnRedCardChange     func(gc *GameContext, homeRC, awayRC int)
-	OnPowerPlayChange   func(gc *GameContext, homeOn, awayOn bool)
+	observers []GameObserver
 
 	inbox chan func()
 	stop  chan struct{}
+}
+
+// GameObserver receives notifications when game state changes.
+// Implementations run on the game's goroutine — safe to read gc fields directly.
+type GameObserver interface {
+	OnGameEvent(gc *GameContext, eventType string)
 }
 
 // GameState is the interface every sport-specific state must implement.
@@ -99,6 +101,10 @@ type GameState interface {
 	// RecalcEdge recomputes model-vs-market edge from the current
 	// model probabilities and Kalshi ticker prices.
 	RecalcEdge(tickers map[string]*TickerData)
+
+	// HasSignificantEdge returns true when the game has a model-vs-market
+	// edge worth displaying.
+	HasSignificantEdge() bool
 }
 
 func NewGameContext(sport events.Sport, league, eid string, gs GameState) *GameContext {
@@ -136,13 +142,25 @@ func (gc *GameContext) Send(fn func()) {
 	}
 }
 
-// SetMatchStatus updates the match status and fires the OnMatchStatusChange
-// hook. Must be called from the game's goroutine (inside a Send closure).
+// AddObserver registers an observer that will be notified on game events.
+// Must be called before the game starts receiving events.
+func (gc *GameContext) AddObserver(o GameObserver) {
+	gc.observers = append(gc.observers, o)
+}
+
+// Notify calls all registered observers with the given event type.
+// Must be called from the game's goroutine (inside a Send closure).
+func (gc *GameContext) Notify(eventType string) {
+	for _, o := range gc.observers {
+		o.OnGameEvent(gc, eventType)
+	}
+}
+
+// SetMatchStatus updates the match status and notifies all observers.
+// Must be called from the game's goroutine (inside a Send closure).
 func (gc *GameContext) SetMatchStatus(status events.MatchStatus) {
 	gc.MatchStatus = status
-	if gc.OnMatchStatusChange != nil {
-		gc.OnMatchStatusChange(gc)
-	}
+	gc.Notify(string(status))
 }
 
 // Close shuts down the game's goroutine and waits for it to drain.

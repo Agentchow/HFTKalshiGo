@@ -9,11 +9,8 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
-	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
-	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
-	"github.com/charleschow/hft-trading/internal/core/training"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -36,28 +33,13 @@ type Engine struct {
 	resolver   *ticker.Resolver
 	display    *display.Tracker
 	subscriber TickerSubscriber
+	observers  []game.GameObserver
 
 	kalshiWSUp  atomic.Bool
 	skippedEIDs sync.Map
-
-	soccerTraining *training.Store
-	hockeyTraining *training.HockeyStore
-	backfillDelay  time.Duration
 }
 
-// SetSoccerTraining enables soccer training DB logging.
-func (e *Engine) SetSoccerTraining(s *training.Store, backfillDelaySec int) {
-	e.soccerTraining = s
-	e.backfillDelay = time.Duration(backfillDelaySec) * time.Second
-}
-
-// SetHockeyTraining enables hockey training DB logging.
-func (e *Engine) SetHockeyTraining(s *training.HockeyStore, backfillDelaySec int) {
-	e.hockeyTraining = s
-	e.backfillDelay = time.Duration(backfillDelaySec) * time.Second
-}
-
-func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver, subscriber TickerSubscriber) *Engine {
+func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver, subscriber TickerSubscriber, observers []game.GameObserver) *Engine {
 	e := &Engine{
 		bus:        bus,
 		store:      gameStore,
@@ -65,6 +47,7 @@ func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Regis
 		resolver:   resolver,
 		subscriber: subscriber,
 		display:    display.NewTracker(),
+		observers:  observers,
 	}
 	e.kalshiWSUp.Store(true)
 
@@ -127,8 +110,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		e.publishIntents(result.Intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
 
 		// ── MatchStatus ─────────────────────────────────────────
-		// Only flag a score change when the game already had LIVE data;
-		// the first event after a restart initialises from 0-0 defaults.
 		scoreChanged := hadLIVEData && (gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway)
 		status := gu.MatchStatus
 		if scoreChanged {
@@ -188,8 +169,6 @@ func isFinished(period string) bool {
 	}
 	return false
 }
-
-const edgeDisplayThrottle = 30 * time.Second
 
 // onMarketData routes Kalshi WS price updates to the correct game.
 //
@@ -253,13 +232,7 @@ func (e *Engine) onMarketData(evt events.Event) error {
 				e.publishIntents(intents, gc.Sport, gc.League, gc.EID, evt.Timestamp)
 			}
 
-			if time.Since(ds.LastEdgeDisplay) < edgeDisplayThrottle {
-				return
-			}
-			if strat.HasSignificantEdge(gc) {
-				ds.LastEdgeDisplay = time.Now()
-				printGame(gc, "EDGE")
-			}
+			gc.Notify("PRICE_UPDATE")
 		})
 	}
 	return nil
@@ -319,9 +292,10 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 	gs := e.registry.CreateGameState(gu.Sport, gu.EID, gu.League, gu.HomeTeam, gu.AwayTeam)
 	gc := game.NewGameContext(gu.Sport, gu.League, gu.EID, gs)
 	gc.GameStartedAt = gameStart
-	gc.OnMatchStatusChange = e.onMatchStatusChange
-	gc.OnRedCardChange = e.onRedCardChange
-	gc.OnPowerPlayChange = e.onPowerPlayChange
+
+	for _, o := range e.observers {
+		gc.AddObserver(o)
+	}
 
 	allTickers := resolved.AllTickers()
 	if e.subscriber != nil {
@@ -381,289 +355,4 @@ func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport
 		Timestamp: ts,
 		Payload:   intents,
 	})
-}
-
-func printGame(gc *game.GameContext, eventType string) {
-	switch gc.Sport {
-	case events.SportHockey:
-		display.PrintHockey(gc, eventType)
-	case events.SportSoccer:
-		display.PrintSoccer(gc, eventType)
-	case events.SportFootball:
-		display.PrintFootball(gc, eventType)
-	}
-}
-
-// onMatchStatusChange is the callback wired to gc.OnMatchStatusChange.
-// Prints the event and writes a training snapshot.
-func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
-	status := gc.MatchStatus
-
-	ds := e.display.Get(gc.EID)
-	if !ds.DisplayedLIVE {
-		ds.DisplayedLIVE = true
-	}
-	printGame(gc, string(status))
-
-	switch gc.Sport {
-	case events.SportSoccer:
-		if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
-			return
-		}
-		ss, ok := gc.Game.(*soccerState.SoccerState)
-		if !ok {
-			return
-		}
-		if status == events.StatusScoreChange && !ss.Bet365Updated {
-			return
-		}
-		var outcome *string
-		if status == events.StatusGameFinish {
-			o := regulationOutcome(ss)
-			outcome = &o
-		}
-		row := e.buildSoccerRow(gc, ss, string(status), outcome)
-		rowID, err := e.soccerTraining.Insert(row)
-		if err != nil {
-			telemetry.Warnf("soccer training: insert failed: %v", err)
-			return
-		}
-		e.spawnBackfill(gc, ss, rowID)
-
-	case events.SportHockey:
-		if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
-			return
-		}
-		hs, ok := gc.Game.(*hockeyState.HockeyState)
-		if !ok {
-			return
-		}
-		if status == events.StatusScoreChange && !hs.Bet365Updated {
-			return
-		}
-		var outcome *string
-		if status == events.StatusGameFinish {
-			o := hockeyOutcome(hs.HomeScore, hs.AwayScore)
-			outcome = &o
-		}
-		row := e.buildHockeyRow(gc, hs, string(status), outcome)
-		rowID, err := e.hockeyTraining.Insert(row)
-		if err != nil {
-			telemetry.Warnf("hockey training: insert failed: %v", err)
-			return
-		}
-		e.spawnHockeyBackfill(gc, hs, rowID)
-	}
-}
-
-// onRedCardChange is fired when soccer red card counts change.
-func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
-	printGame(gc, string(events.StatusRedCard))
-
-	// Skip if training DB not configured, test fixture, or illiquid game.
-	if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
-		return
-	}
-	ss, ok := gc.Game.(*soccerState.SoccerState)
-	if !ok {
-		return
-	}
-	row := e.buildSoccerRow(gc, ss, string(events.StatusRedCard), nil)
-	rowID, err := e.soccerTraining.Insert(row)
-	if err != nil {
-		telemetry.Warnf("soccer training: insert failed: %v", err)
-		return
-	}
-	e.spawnBackfill(gc, ss, rowID)
-}
-
-// onPowerPlayChange is fired when hockey power play state transitions.
-func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
-	label := events.StatusPowerPlayEnd
-	if homeOn || awayOn {
-		label = events.StatusPowerPlay
-	}
-	printGame(gc, string(label))
-
-	// Skip if training DB not configured, test fixture, or illiquid game.
-	if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
-		return
-	}
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok {
-		return
-	}
-	row := e.buildHockeyRow(gc, hs, string(label), nil)
-	rowID, err := e.hockeyTraining.Insert(row)
-	if err != nil {
-		telemetry.Warnf("hockey training: insert failed: %v", err)
-		return
-	}
-	e.spawnHockeyBackfill(gc, hs, rowID)
-}
-
-// ── Soccer training DB helpers ───────────────────────────────────────
-
-func (e *Engine) buildSoccerRow(gc *game.GameContext, ss *soccerState.SoccerState, eventType string, outcome *string) training.SoccerRow {
-	row := training.SoccerRow{
-		Ts:            time.Now(),
-		GameID:        gc.EID,
-		League:        gc.League,
-		HomeTeam:      ss.HomeTeam,
-		AwayTeam:      ss.AwayTeam,
-		NormHome:      ticker.Normalize(ss.HomeTeam, ticker.SoccerAliases),
-		NormAway:      ticker.Normalize(ss.AwayTeam, ticker.SoccerAliases),
-		Half:          ss.Half,
-		EventType:     eventType,
-		HomeScore:     ss.HomeScore,
-		AwayScore:     ss.AwayScore,
-		TimeRemain:    ss.TimeLeft,
-		RedCardsHome:  ss.HomeRedCards,
-		RedCardsAway:  ss.AwayRedCards,
-		ActualOutcome: outcome,
-	}
-
-	if ss.PregameApplied {
-		row.PregameHomePct = f64Ptr(ss.HomeStrength)
-		row.PregameDrawPct = f64Ptr(ss.DrawPct)
-		row.PregameAwayPct = f64Ptr(ss.AwayStrength)
-		row.PregameG0 = f64Ptr(ss.G0)
-	}
-
-	return row
-}
-
-func (e *Engine) spawnBackfill(gc *game.GameContext, ss *soccerState.SoccerState, rowID int64) {
-	delay := e.backfillDelay
-	go func() {
-		time.Sleep(delay)
-		gc.Send(func() {
-			odds := training.OddsBackfill{}
-
-			if ss.Bet365HomePct != nil && *ss.Bet365HomePct > 0 {
-				v := *ss.Bet365HomePct / 100.0
-				odds.Bet365HomePctL = &v
-			}
-			if ss.Bet365DrawPct != nil && *ss.Bet365DrawPct > 0 {
-				v := *ss.Bet365DrawPct / 100.0
-				odds.Bet365DrawPctL = &v
-			}
-			if ss.Bet365AwayPct != nil && *ss.Bet365AwayPct > 0 {
-				v := *ss.Bet365AwayPct / 100.0
-				odds.Bet365AwayPctL = &v
-			}
-
-			if len(gc.Tickers) > 0 {
-				if td, ok := gc.Tickers[ss.HomeTicker]; ok && td.YesAsk > 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiHomePctL = &v
-				}
-				if td, ok := gc.Tickers[ss.DrawTicker]; ok && td.YesAsk > 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiDrawPctL = &v
-				}
-				if td, ok := gc.Tickers[ss.AwayTicker]; ok && td.YesAsk > 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiAwayPctL = &v
-				}
-			}
-
-			e.soccerTraining.BackfillOdds(rowID, odds)
-		})
-	}()
-}
-
-// regulationOutcome returns the 1X2 result based on the regulation-time
-// score, which is what Kalshi settles on. SoccerState freezes the
-// regulation score when the game transitions to extra time or penalties.
-func regulationOutcome(ss *soccerState.SoccerState) string {
-	diff := ss.RegulationGoalDiff()
-	if diff > 0 {
-		return "home_win"
-	}
-	if diff < 0 {
-		return "away_win"
-	}
-	return "draw"
-}
-
-const minTrainingVolume int64 = 20_000
-
-func f64Ptr(v float64) *float64 { return &v }
-
-func isMockGame(eid string) bool { return strings.HasPrefix(eid, "MOCK-") }
-
-// ── Hockey training DB helpers ───────────────────────────────────────
-
-func (e *Engine) buildHockeyRow(gc *game.GameContext, hs *hockeyState.HockeyState, eventType string, outcome *string) training.HockeyRow {
-	row := training.HockeyRow{
-		Ts:            time.Now(),
-		GameID:        gc.EID,
-		League:        gc.League,
-		HomeTeam:      hs.HomeTeam,
-		AwayTeam:      hs.AwayTeam,
-		NormHome:      ticker.Normalize(hs.HomeTeam, ticker.HockeyAliases),
-		NormAway:      ticker.Normalize(hs.AwayTeam, ticker.HockeyAliases),
-		EventType:     eventType,
-		HomeScore:     hs.HomeScore,
-		AwayScore:     hs.AwayScore,
-		Period:        hs.Period,
-		TimeRemain:    hs.TimeLeft,
-		HomePowerPlay: hs.IsHomePowerPlay,
-		AwayPowerPlay: hs.IsAwayPowerPlay,
-		ActualOutcome: outcome,
-	}
-
-	if hs.PregameApplied {
-		row.PregameHomePct = f64Ptr(hs.HomeStrength)
-		row.PregameAwayPct = f64Ptr(hs.AwayStrength)
-		row.PregameG0 = hs.PregameG0
-	}
-
-	return row
-}
-
-func (e *Engine) spawnHockeyBackfill(gc *game.GameContext, hs *hockeyState.HockeyState, rowID int64) {
-	delay := e.backfillDelay
-	go func() {
-		time.Sleep(delay)
-		gc.Send(func() {
-			odds := training.HockeyOddsBackfill{}
-
-			if hs.Bet365HomePct != nil && *hs.Bet365HomePct > 0 {
-				v := *hs.Bet365HomePct / 100.0
-				odds.Bet365HomePctL = &v
-			}
-			if hs.Bet365AwayPct != nil && *hs.Bet365AwayPct > 0 {
-				v := *hs.Bet365AwayPct / 100.0
-				odds.Bet365AwayPctL = &v
-			}
-
-			if len(gc.Tickers) > 0 {
-				if td, ok := gc.Tickers[hs.HomeTicker]; ok && td.YesAsk > 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiHomePctL = &v
-				}
-				if td, ok := gc.Tickers[hs.AwayTicker]; ok && td.YesAsk > 0 {
-					v := td.YesAsk / 100.0
-					odds.KalshiAwayPctL = &v
-				}
-			}
-
-			e.hockeyTraining.BackfillOdds(rowID, odds)
-		})
-	}()
-}
-
-// hockeyOutcome returns the outcome for a finished hockey game.
-// Tied scores at finish mean the game went to a shootout that
-// GoalServe didn't report individual goals for.
-func hockeyOutcome(homeScore, awayScore int) string {
-	if homeScore > awayScore {
-		return "home_win"
-	}
-	if awayScore > homeScore {
-		return "away_win"
-	}
-	return "shootout"
 }

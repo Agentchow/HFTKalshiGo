@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	soccerState "github.com/charleschow/hft-trading/internal/core/state/game/soccer"
@@ -97,8 +98,8 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		ss.UpdateRedCards(gu.HomeRedCards, gu.AwayRedCards)
 	}
 	rcChanged := ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC
-	if rcChanged && gc.OnRedCardChange != nil {
-		gc.OnRedCardChange(gc, ss.HomeRedCards, ss.AwayRedCards)
+	if rcChanged {
+		gc.Notify(string(events.StatusRedCard))
 	}
 
 	tracked := len(gc.Tickers) > 0
@@ -171,20 +172,8 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []
 	return nil
 }
 
-func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
-	ss, ok := gc.Game.(*soccerState.SoccerState)
-	if !ok {
-		return false
-	}
-	for _, e := range []float64{
-		ss.EdgeHomeYes, ss.EdgeDrawYes, ss.EdgeAwayYes,
-		ss.EdgeHomeNo, ss.EdgeDrawNo, ss.EdgeAwayNo,
-	} {
-		if e >= edgeThreshold {
-			return true
-		}
-	}
-	return false
+func (s *Strategy) DisplayGame(gc *game.GameContext, eventType string) {
+	display.PrintSoccer(gc, eventType)
 }
 
 // ── Pregame odds infrastructure ──────────────────────────────────────

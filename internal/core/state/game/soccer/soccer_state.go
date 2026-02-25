@@ -216,6 +216,20 @@ func (s *SoccerState) RecalcEdge(tickers map[string]*game.TickerData) {
 	s.EdgeAwayNo = edgeFor(s.ModelAwayNo, noAsk(tickers, s.AwayTicker))
 }
 
+const significantEdgePct = 3.0
+
+func (s *SoccerState) HasSignificantEdge() bool {
+	for _, e := range []float64{
+		s.EdgeHomeYes, s.EdgeDrawYes, s.EdgeAwayYes,
+		s.EdgeHomeNo, s.EdgeDrawNo, s.EdgeAwayNo,
+	} {
+		if e >= significantEdgePct {
+			return true
+		}
+	}
+	return false
+}
+
 func edgeFor(model, ask float64) float64 {
 	if ask <= 0 {
 		return 0

@@ -113,3 +113,5 @@ func (f *FootballState) SetTickers(home, away, _ string) {
 func (f *FootballState) RecalcEdge(_ map[string]*game.TickerData) {
 	// TODO: implement football edge calculation
 }
+
+func (f *FootballState) HasSignificantEdge() bool { return false }

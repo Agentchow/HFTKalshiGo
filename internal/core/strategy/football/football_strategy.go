@@ -3,6 +3,7 @@ package football
 import (
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	fbState "github.com/charleschow/hft-trading/internal/core/state/game/football"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
@@ -67,7 +68,9 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	return strategy.EvalResult{}
 }
 
-func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool { return false }
+func (s *Strategy) DisplayGame(gc *game.GameContext, eventType string) {
+	display.PrintFootball(gc, eventType)
+}
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
 	return nil

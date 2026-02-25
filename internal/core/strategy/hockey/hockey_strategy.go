@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	hockeyState "github.com/charleschow/hft-trading/internal/core/state/game/hockey"
@@ -177,20 +178,8 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	hs.ModelAwayPct = ProjectedOdds(hs.AwayStrength, hs.TimeLeft, -lead) * 100
 }
 
-func (s *Strategy) HasSignificantEdge(gc *game.GameContext) bool {
-	hs, ok := gc.Game.(*hockeyState.HockeyState)
-	if !ok {
-		return false
-	}
-	for _, e := range []float64{
-		hs.EdgeHomeYes, hs.EdgeAwayYes,
-		hs.EdgeHomeNo, hs.EdgeAwayNo,
-	} {
-		if e >= discrepancyPct {
-			return true
-		}
-	}
-	return false
+func (s *Strategy) DisplayGame(gc *game.GameContext, eventType string) {
+	display.PrintHockey(gc, eventType)
 }
 
 func (s *Strategy) OnPriceUpdate(gc *game.GameContext) []events.OrderIntent {
@@ -226,8 +215,10 @@ func (s *Strategy) updatePowerPlay(gc *game.GameContext, hs *hockeyState.HockeyS
 	if homeOn != hs.IsHomePowerPlay || awayOn != hs.IsAwayPowerPlay {
 		hs.IsHomePowerPlay = homeOn
 		hs.IsAwayPowerPlay = awayOn
-		if gc.OnPowerPlayChange != nil {
-			gc.OnPowerPlayChange(gc, homeOn, awayOn)
+		if homeOn || awayOn {
+			gc.Notify(string(events.StatusPowerPlay))
+		} else {
+			gc.Notify(string(events.StatusPowerPlayEnd))
 		}
 	}
 }

@@ -26,9 +26,8 @@ type Strategy interface {
 	// OnFinish is called when a game ends. Returns "slam" orders for settled markets.
 	OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent
 
-	// HasSignificantEdge returns true when the game has a model-vs-market
-	// edge worth displaying. Used by the engine for throttled EDGE prints.
-	HasSignificantEdge(gc *game.GameContext) bool
+	// DisplayGame formats and prints the game state for the given event type.
+	DisplayGame(gc *game.GameContext, eventType string)
 }
 
 // Registry maps sport -> strategy implementation.

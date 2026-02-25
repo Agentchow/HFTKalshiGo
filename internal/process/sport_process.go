@@ -12,7 +12,9 @@ import (
 	"github.com/charleschow/hft-trading/internal/adapters/kalshi_auth"
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
 	"github.com/charleschow/hft-trading/internal/config"
+	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/execution"
+	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
@@ -30,9 +32,9 @@ type SportProcessConfig struct {
 	// BuildStrategy returns the sport-specific strategy implementation.
 	BuildStrategy func(cfg *config.Config) strategy.Strategy
 
-	// ConfigureEngine optionally wires sport-specific state onto the engine
-	// (e.g. training DB). The returned io.Closer (if non-nil) is closed on shutdown.
-	ConfigureEngine func(cfg *config.Config, engine *strategy.Engine) (io.Closer, error)
+	// BuildTrainingObserver optionally creates a training observer.
+	// The returned io.Closer (if non-nil) is closed on shutdown.
+	BuildTrainingObserver func(cfg *config.Config) (game.GameObserver, io.Closer, error)
 }
 
 // Run boots a sport-specific trading process. It wires all shared
@@ -77,21 +79,31 @@ func Run(spc SportProcessConfig) {
 	// ── Strategy (sport-specific via closure) ──────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(spc.Sport, spc.BuildStrategy(cfg))
-	engine := strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS)
 
-	// ── Training (sport-specific via closure, optional) ────────
+	// ── Observers ──────────────────────────────────────────────
+	var observers []game.GameObserver
 	var trainingCloser io.Closer
-	if spc.ConfigureEngine != nil {
-		c, err := spc.ConfigureEngine(cfg, engine)
+
+	displayObs := display.NewObserver(func(sport events.Sport) (display.Displayer, bool) {
+		return registry.Get(sport)
+	})
+	observers = append(observers, displayObs)
+
+	if spc.BuildTrainingObserver != nil {
+		obs, closer, err := spc.BuildTrainingObserver(cfg)
 		if err != nil {
 			telemetry.Errorf("%s training store: %v", label, err)
 			os.Exit(1)
 		}
-		trainingCloser = c
+		observers = append(observers, obs)
+		trainingCloser = closer
 	}
 	if trainingCloser != nil {
 		defer trainingCloser.Close()
 	}
+
+	// ── Engine ─────────────────────────────────────────────────
+	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS, observers)
 
 	telemetry.Infof("Listening for %s games via fanout (%s) (GoalServe will take ~10 sec)...", spc.SportKey, cfg.FanoutAddr)
 

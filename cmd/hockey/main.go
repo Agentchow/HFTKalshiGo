@@ -5,6 +5,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/config"
+	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
 	hockeyStrat "github.com/charleschow/hft-trading/internal/core/strategy/hockey"
 	"github.com/charleschow/hft-trading/internal/core/training"
@@ -23,13 +24,12 @@ func main() {
 			}
 			return hockeyStrat.NewStrategy(pregame)
 		},
-		ConfigureEngine: func(cfg *config.Config, engine *strategy.Engine) (io.Closer, error) {
+		BuildTrainingObserver: func(cfg *config.Config) (game.GameObserver, io.Closer, error) {
 			store, err := training.OpenHockeyStore(cfg.HockeyTrainingDBPath)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			engine.SetHockeyTraining(store, cfg.TrainingBackfillDelaySec)
-			return store, nil
+			return training.NewHockeyObserver(store, cfg.TrainingBackfillDelaySec), store, nil
 		},
 	})
 }

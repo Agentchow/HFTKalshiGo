@@ -142,15 +142,15 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	ss.PinnacleUpdated = false
+	ss.Bet365Updated = false
 	if gu.HomeStrength != nil && gu.DrawPct != nil && gu.AwayStrength != nil {
 		h := *gu.HomeStrength * 100
 		d := *gu.DrawPct * 100
 		a := *gu.AwayStrength * 100
-		ss.PinnacleUpdated = ss.PinnacleHomePct == nil || *ss.PinnacleHomePct != h
-		ss.PinnacleHomePct = &h
-		ss.PinnacleDrawPct = &d
-		ss.PinnacleAwayPct = &a
+		ss.Bet365Updated = ss.Bet365HomePct == nil || *ss.Bet365HomePct != h
+		ss.Bet365HomePct = &h
+		ss.Bet365DrawPct = &d
+		ss.Bet365AwayPct = &a
 	}
 
 	return strategy.EvalResult{}

@@ -4,7 +4,7 @@
 // On startup it queries the Kalshi API for active soccer, hockey, and football
 // markets, picks one game from each sport, and uses those team names in the
 // mock webhooks. Each sport runs on its own goroutine.
-// No odds are included in the payloads so Pinnacle stays nil,
+// No odds are included in the payloads so Bet365 stays nil,
 // RecalcEdge is a no-op, and no orders are placed.
 //
 // Each run uses a unique EID (timestamp-based) so the engine creates a fresh

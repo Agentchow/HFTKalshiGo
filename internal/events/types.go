@@ -35,7 +35,7 @@ type GameUpdateEvent struct {
 	// Zero when GoalServe doesn't provide it (some hockey feeds).
 	GameStartUTC int64 `json:"game_start_utc,omitempty"`
 
-	// Webhook odds (Pinnacle-implied), nil if unavailable.
+	// Webhook odds (bet365 via GoalServe), nil if unavailable.
 	HomeStrength *float64 `json:"home_win_pct,omitempty"`
 	DrawPct      *float64 `json:"draw_pct,omitempty"` // soccer only
 	AwayStrength *float64 `json:"away_win_pct,omitempty"`

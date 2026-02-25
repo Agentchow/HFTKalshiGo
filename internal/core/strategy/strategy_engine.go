@@ -414,7 +414,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		if !ok {
 			return
 		}
-		if status == events.StatusScoreChange && !ss.PinnacleUpdated {
+		if status == events.StatusScoreChange && !ss.Bet365Updated {
 			return
 		}
 		var outcome *string
@@ -438,7 +438,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		if !ok {
 			return
 		}
-		if status == events.StatusScoreChange && !hs.PinnacleUpdated {
+		if status == events.StatusScoreChange && !hs.Bet365Updated {
 			return
 		}
 		var outcome *string
@@ -540,17 +540,17 @@ func (e *Engine) spawnBackfill(gc *game.GameContext, ss *soccerState.SoccerState
 		gc.Send(func() {
 			odds := training.OddsBackfill{}
 
-			if ss.PinnacleHomePct != nil && *ss.PinnacleHomePct > 0 {
-				v := *ss.PinnacleHomePct / 100.0
-				odds.PinnacleHomePctL = &v
+			if ss.Bet365HomePct != nil && *ss.Bet365HomePct > 0 {
+				v := *ss.Bet365HomePct / 100.0
+				odds.Bet365HomePctL = &v
 			}
-			if ss.PinnacleDrawPct != nil && *ss.PinnacleDrawPct > 0 {
-				v := *ss.PinnacleDrawPct / 100.0
-				odds.PinnacleDrawPctL = &v
+			if ss.Bet365DrawPct != nil && *ss.Bet365DrawPct > 0 {
+				v := *ss.Bet365DrawPct / 100.0
+				odds.Bet365DrawPctL = &v
 			}
-			if ss.PinnacleAwayPct != nil && *ss.PinnacleAwayPct > 0 {
-				v := *ss.PinnacleAwayPct / 100.0
-				odds.PinnacleAwayPctL = &v
+			if ss.Bet365AwayPct != nil && *ss.Bet365AwayPct > 0 {
+				v := *ss.Bet365AwayPct / 100.0
+				odds.Bet365AwayPctL = &v
 			}
 
 			if len(gc.Tickers) > 0 {
@@ -630,13 +630,13 @@ func (e *Engine) spawnHockeyBackfill(gc *game.GameContext, hs *hockeyState.Hocke
 		gc.Send(func() {
 			odds := training.HockeyOddsBackfill{}
 
-			if hs.PinnacleHomePct != nil && *hs.PinnacleHomePct > 0 {
-				v := *hs.PinnacleHomePct / 100.0
-				odds.PinnacleHomePctL = &v
+			if hs.Bet365HomePct != nil && *hs.Bet365HomePct > 0 {
+				v := *hs.Bet365HomePct / 100.0
+				odds.Bet365HomePctL = &v
 			}
-			if hs.PinnacleAwayPct != nil && *hs.PinnacleAwayPct > 0 {
-				v := *hs.PinnacleAwayPct / 100.0
-				odds.PinnacleAwayPctL = &v
+			if hs.Bet365AwayPct != nil && *hs.Bet365AwayPct > 0 {
+				v := *hs.Bet365AwayPct / 100.0
+				odds.Bet365AwayPctL = &v
 			}
 
 			if len(gc.Tickers) > 0 {

@@ -56,9 +56,9 @@ type SoccerRow struct {
 // OddsBackfill holds the delayed-fill odds columns.
 // Nil pointers are written as SQL NULL.
 type OddsBackfill struct {
-	PinnacleHomePctL *float64
-	PinnacleDrawPctL *float64
-	PinnacleAwayPctL *float64
+	Bet365HomePctL *float64
+	Bet365DrawPctL *float64
+	Bet365AwayPctL *float64
 
 	KalshiHomePctL *float64
 	KalshiDrawPctL *float64
@@ -111,9 +111,9 @@ func OpenStore(path string) (*Store, error) {
 			pregame_away_pct REAL,
 			pregame_g0       REAL,
 
-			pinnacle_home_pct_l REAL,
-			pinnacle_draw_pct_l REAL,
-			pinnacle_away_pct_l REAL,
+			bet365_home_pct_l REAL,
+			bet365_draw_pct_l REAL,
+			bet365_away_pct_l REAL,
 
 			kalshi_home_pct_l   REAL,
 			kalshi_draw_pct_l   REAL,
@@ -211,16 +211,16 @@ func (s *Store) BackfillOdds(rowID int64, odds OddsBackfill) {
 
 		_, err := s.db.Exec(
 			`UPDATE soccer_training SET
-				pinnacle_home_pct_l = ?,
-				pinnacle_draw_pct_l = ?,
-				pinnacle_away_pct_l = ?,
-				kalshi_home_pct_l   = ?,
-				kalshi_draw_pct_l   = ?,
-				kalshi_away_pct_l   = ?
+				bet365_home_pct_l = ?,
+				bet365_draw_pct_l = ?,
+				bet365_away_pct_l = ?,
+				kalshi_home_pct_l = ?,
+				kalshi_draw_pct_l = ?,
+				kalshi_away_pct_l = ?
 			WHERE id = ?`,
-		round5(odds.PinnacleHomePctL),
-		round5(odds.PinnacleDrawPctL),
-		round5(odds.PinnacleAwayPctL),
+		round5(odds.Bet365HomePctL),
+		round5(odds.Bet365DrawPctL),
+		round5(odds.Bet365AwayPctL),
 		round5(odds.KalshiHomePctL),
 		round5(odds.KalshiDrawPctL),
 		round5(odds.KalshiAwayPctL),

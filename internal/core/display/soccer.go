@@ -38,11 +38,11 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 		awayNo = td.NoAsk
 	}
 
-	// Pinnacle
-	pinnHome := pctOrZero(ss.PinnacleHomePct)
-	pinnDraw := pctOrZero(ss.PinnacleDrawPct)
-	pinnAway := pctOrZero(ss.PinnacleAwayPct)
-	hasPinnacle := ss.PinnacleHomePct != nil && ss.PinnacleDrawPct != nil && ss.PinnacleAwayPct != nil
+	// Bet365
+	b365Home := pctOrZero(ss.Bet365HomePct)
+	b365Draw := pctOrZero(ss.Bet365DrawPct)
+	b365Away := pctOrZero(ss.Bet365AwayPct)
+	hasBet365 := ss.Bet365HomePct != nil && ss.Bet365DrawPct != nil && ss.Bet365AwayPct != nil
 
 	edgeHomeYes := ss.EdgeHomeYes
 	edgeDrawYes := ss.EdgeDrawYes
@@ -87,14 +87,14 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	} else {
 		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi YES:", "—", "—", "—")
 	}
-	if hasPinnacle {
-		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Pinnacle YES:", pinnHome, pinnDraw, pinnAway)
+	if hasBet365 {
+		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Bet365 YES:", b365Home, b365Draw, b365Away)
 		if hasKalshi {
 			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge YES:",
 				fmtEdge(edgeHomeYes), fmtEdge(edgeDrawYes), fmtEdge(edgeAwayYes))
 		}
 	} else {
-		fmt.Fprintf(&b, "    %-40s%s\n", "Pinnacle YES:", "(not available)")
+		fmt.Fprintf(&b, "    %-40s%s\n", "Bet365 YES:", "(not available)")
 	}
 
 	fmt.Fprintf(&b, "\n")
@@ -103,8 +103,8 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	} else {
 		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi NO:", "—", "—", "—")
 	}
-	if hasPinnacle {
-		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Pinnacle NO:", 100-pinnHome, 100-pinnDraw, 100-pinnAway)
+	if hasBet365 {
+		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Bet365 NO:", 100-b365Home, 100-b365Draw, 100-b365Away)
 		if hasKalshi {
 			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge NO:",
 				fmtEdge(edgeHomeNo), fmtEdge(edgeDrawNo), fmtEdge(edgeAwayNo))
@@ -112,7 +112,7 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	}
 
 	// Edge summary line — only when both sources are available
-	if hasPinnacle && hasKalshi {
+	if hasBet365 && hasKalshi {
 		var edges []string
 		for _, e := range []struct {
 			name string

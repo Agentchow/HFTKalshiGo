@@ -40,10 +40,10 @@ type SoccerState struct {
 	ModelDrawNo  float64
 	ModelAwayNo  float64
 
-	PinnacleHomePct *float64
-	PinnacleDrawPct *float64
-	PinnacleAwayPct *float64
-	PinnacleUpdated bool // true when Pinnacle odds changed in the latest Evaluate
+	Bet365HomePct *float64
+	Bet365DrawPct *float64
+	Bet365AwayPct *float64
+	Bet365Updated bool // true when bet365 odds changed in the latest Evaluate
 
 	EdgeHomeYes float64
 	EdgeDrawYes float64

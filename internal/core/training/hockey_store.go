@@ -41,8 +41,8 @@ type HockeyRow struct {
 // HockeyOddsBackfill holds the delayed-fill odds columns for hockey.
 // Nil pointers are written as SQL NULL.
 type HockeyOddsBackfill struct {
-	PinnacleHomePctL *float64
-	PinnacleAwayPctL *float64
+	Bet365HomePctL *float64
+	Bet365AwayPctL *float64
 
 	KalshiHomePctL *float64
 	KalshiAwayPctL *float64
@@ -94,8 +94,8 @@ func OpenHockeyStore(path string) (*HockeyStore, error) {
 			pregame_away_pct    REAL,
 			pregame_g0          REAL,
 
-			pinnacle_home_pct_l REAL,
-			pinnacle_away_pct_l REAL,
+			bet365_home_pct_l REAL,
+			bet365_away_pct_l REAL,
 
 			kalshi_home_pct_l   REAL,
 			kalshi_away_pct_l   REAL,
@@ -190,13 +190,13 @@ func (s *HockeyStore) BackfillOdds(rowID int64, odds HockeyOddsBackfill) {
 
 		_, err := s.db.Exec(
 			`UPDATE training_snapshots SET
-				pinnacle_home_pct_l = ?,
-				pinnacle_away_pct_l = ?,
-				kalshi_home_pct_l   = ?,
-				kalshi_away_pct_l   = ?
+				bet365_home_pct_l = ?,
+				bet365_away_pct_l = ?,
+				kalshi_home_pct_l = ?,
+				kalshi_away_pct_l = ?
 			WHERE id = ?`,
-		round5(odds.PinnacleHomePctL),
-		round5(odds.PinnacleAwayPctL),
+		round5(odds.Bet365HomePctL),
+		round5(odds.Bet365AwayPctL),
 		round5(odds.KalshiHomePctL),
 		round5(odds.KalshiAwayPctL),
 			rowID,

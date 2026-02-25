@@ -131,13 +131,13 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	hs.PinnacleUpdated = false
+	hs.Bet365Updated = false
 	if gu.HomeStrength != nil && gu.AwayStrength != nil {
 		h := *gu.HomeStrength * 100
 		a := *gu.AwayStrength * 100
-		hs.PinnacleUpdated = hs.PinnacleHomePct == nil || *hs.PinnacleHomePct != h
-		hs.PinnacleHomePct = &h
-		hs.PinnacleAwayPct = &a
+		hs.Bet365Updated = hs.Bet365HomePct == nil || *hs.Bet365HomePct != h
+		hs.Bet365HomePct = &h
+		hs.Bet365AwayPct = &a
 	}
 
 	s.computeModel(hs)
@@ -158,7 +158,7 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []
 }
 
 // computeModel sets ModelHomePct and ModelAwayPct using the pregame-strength
-// math model. Pinnacle odds are stored separately for display but not used
+// math model. Bet365 odds are stored separately for display but not used
 // in the model or edge calculations.
 func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	lead := float64(hs.Lead())

@@ -41,7 +41,7 @@ type GameContext struct {
 	League string
 	EID    string
 
-	// Sport-specific state (scores, period, model output, tickers, pinnacle odds).
+	// Sport-specific state (scores, period, model output, tickers, bet365 odds).
 	Game GameState
 
 	MatchStatus events.MatchStatus

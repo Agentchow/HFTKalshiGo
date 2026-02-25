@@ -1,7 +1,21 @@
 package events
 
+// MatchStatus represents the current state of a game for display and logic.
+type MatchStatus string
+
+const (
+	StatusGameStart    MatchStatus = "GAME START"
+	StatusLive         MatchStatus = "LIVE"
+	StatusScoreChange  MatchStatus = "SCORE CHANGE"
+	StatusRedCard      MatchStatus = "RED CARD"
+	StatusPowerPlay    MatchStatus = "POWER PLAY"
+	StatusPowerPlayEnd MatchStatus = "POWER PLAY END"
+	StatusOvertime     MatchStatus = "OVERTIME"
+	StatusGameFinish   MatchStatus = "GAME FINISH"
+)
+
 // GameUpdateEvent is published on every GoalServe Webhook/WS or GeniusSports Websocket for a game.
-// Covers live updates, score changes, and game finishes in a single type.
+// Covers LIVE updates, SCORE CHANGEs, and game finishes in a single type.
 type GameUpdateEvent struct {
 	EID       string  `json:"eid"`
 	Source    string  `json:"source,omitempty"` // "goalserve_ws", "goalserve_webhook", "genius_ws"
@@ -15,10 +29,7 @@ type GameUpdateEvent struct {
 	TimeLeft  float64 `json:"time_left"`
 	Overturn  bool    `json:"overturn,omitempty"` // true if this score was confirmed after a drop
 
-	// MatchStatus is inferred by the parser from the webhook snapshot.
-	// Values: "Game Start", "Live", "Overtime".
-	// The engine overrides to "Score Change" or "Game Finish" when appropriate.
-	MatchStatus string `json:"match_status,omitempty"`
+	MatchStatus MatchStatus `json:"match_status,omitempty"`
 
 	// Scheduled kick-off / puck-drop from GoalServe (Unix UTC seconds).
 	// Zero when GoalServe doesn't provide it (some hockey feeds).

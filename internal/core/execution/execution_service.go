@@ -21,7 +21,7 @@ var _ OrderPlacer = (*kalshi_http.Client)(nil)
 // Service subscribes to OrderIntent events, applies risk checks via the
 // lane router, and places orders through the Kalshi batch HTTP endpoint.
 //
-// Order placement is async — the HTTP call runs on a short-lived goroutine
+// Order placement is async — the HTTP call runs on a short-LIVEd goroutine
 // so it never blocks the game's event loop. The fill result is fed back
 // to the game's goroutine via gc.Send().
 type Service struct {

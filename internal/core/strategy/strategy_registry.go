@@ -17,7 +17,7 @@ type EvalResult struct {
 
 // Strategy is the interface each sport must implement.
 type Strategy interface {
-	// Evaluate is called on each game update (live webhook).
+	// Evaluate is called on each game update (LIVE webhook).
 	Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) EvalResult
 
 	// OnPriceUpdate is called when a Kalshi market price changes.

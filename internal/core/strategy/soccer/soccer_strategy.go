@@ -103,7 +103,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	tracked := len(gc.Tickers) > 0
 
-	if ss.HasLiveData() {
+	if ss.HasLIVEData() {
 		result := ss.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":

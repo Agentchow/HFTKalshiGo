@@ -44,11 +44,9 @@ type GameContext struct {
 	// Sport-specific state (scores, period, model output, tickers, pinnacle odds).
 	Game GameState
 
-	// MatchStatus is the last significant game event.
-	// One of: "Game Start", "Score Change", "Game Finish", "Overtime".
-	MatchStatus string
+	MatchStatus events.MatchStatus
 
-	// Live market prices keyed by Kalshi ticker.
+	// LIVE market prices keyed by Kalshi ticker.
 	Tickers map[string]*TickerData
 
 	// Fills recorded against this game.
@@ -57,7 +55,7 @@ type GameContext struct {
 	// KalshiEventURL is the link to the Kalshi event page for this game.
 	KalshiEventURL string
 
-	// KalshiConnected is true when the Kalshi WS feed is live.
+	// KalshiConnected is true when the Kalshi WS feed is LIVE.
 	// When false, ticker prices are stale and should not be displayed.
 	KalshiConnected bool
 
@@ -84,8 +82,8 @@ type GameState interface {
 	GetPeriod() string
 	GetTimeRemaining() float64
 	IsFinished() bool
-	IsLive() bool
-	HasLiveData() bool
+	IsLIVE() bool
+	HasLIVEData() bool
 
 	UpdateScore(homeScore, awayScore int, period string, timeRemain float64) bool
 	CheckScoreDrop(homeScore, awayScore int, confirmSec int) string
@@ -95,8 +93,8 @@ type GameState interface {
 	HasPregame() bool
 
 	// DeduplicateStatus suppresses repeated one-shot display statuses.
-	// e.g. hockey returns "Live" after the first "Overtime" notification.
-	DeduplicateStatus(status string) string
+	// e.g. hockey returns StatusLive after the first StatusOvertime notification.
+	DeduplicateStatus(status events.MatchStatus) events.MatchStatus
 
 	// RecalcEdge recomputes model-vs-market edge from the current
 	// model probabilities and Kalshi ticker prices.
@@ -140,7 +138,7 @@ func (gc *GameContext) Send(fn func()) {
 
 // SetMatchStatus updates the match status and fires the OnMatchStatusChange
 // hook. Must be called from the game's goroutine (inside a Send closure).
-func (gc *GameContext) SetMatchStatus(status string) {
+func (gc *GameContext) SetMatchStatus(status events.MatchStatus) {
 	gc.MatchStatus = status
 	if gc.OnMatchStatusChange != nil {
 		gc.OnMatchStatusChange(gc)
@@ -153,7 +151,7 @@ func (gc *GameContext) Close() {
 	<-gc.stop
 }
 
-// UpdateTicker sets or replaces the live market snapshot for a ticker.
+// UpdateTicker sets or replaces the LIVE market snapshot for a ticker.
 // Must be called from the game's goroutine (inside a Send closure).
 func (gc *GameContext) UpdateTicker(td *TickerData) {
 	gc.Tickers[td.Ticker] = td

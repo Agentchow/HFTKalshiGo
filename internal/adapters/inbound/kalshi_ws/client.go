@@ -67,7 +67,7 @@ func (c *Client) dial(ctx context.Context) error {
 	return nil
 }
 
-// SubscribeTickers adds tickers and subscribes on the live connection.
+// SubscribeTickers adds tickers and subscribes on the LIVE connection.
 // Safe to call from any goroutine at any time. If the connection is not
 // yet established the tickers are stored and subscribed on connect.
 func (c *Client) SubscribeTickers(tickers []string) error {

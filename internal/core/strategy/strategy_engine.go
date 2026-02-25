@@ -108,11 +108,11 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			intents := strat.OnFinish(gc, &gu)
 			e.publishIntents(intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
 
-			defer gc.SetMatchStatus("Game Finish")
+			defer gc.SetMatchStatus(events.StatusGameFinish)
 			return
 		}
 
-		// ── Live path ───────────────────────────────────────────
+		// ── LIVE path ───────────────────────────────────────────
 		strat, ok := e.registry.Get(gu.Sport)
 		if !ok {
 			return
@@ -127,13 +127,13 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 		// ── MatchStatus ─────────────────────────────────────────
 		scoreChanged := gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway
-		status := gu.MatchStatus // parser-derived: "Game Start", "Overtime", or "Live"
+		status := gu.MatchStatus
 		if scoreChanged {
-			status = "Score Change"
-		} else if status == "Game Start" {
+			status = events.StatusScoreChange
+		} else if status == events.StatusGameStart {
 			ds := e.display.Get(gc.EID)
 			if ds.GameStarted {
-				status = "Live"
+				status = events.StatusLive
 			} else {
 				ds.GameStarted = true
 			}
@@ -153,16 +153,16 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 		gc.Game.RecalcEdge(gc.Tickers)
 
-		if status == "Live" {
+		if status == events.StatusLive {
 			ds := e.display.Get(gc.EID)
-			if !ds.DisplayedLive {
-				ds.DisplayedLive = true
-				gc.SetMatchStatus("Live")
+			if !ds.DisplayedLIVE {
+				ds.DisplayedLIVE = true
+				gc.SetMatchStatus(events.StatusLive)
 			}
 		} else {
 			ds := e.display.Get(gc.EID)
-			if !ds.DisplayedLive {
-				ds.DisplayedLive = true
+			if !ds.DisplayedLIVE {
+				ds.DisplayedLIVE = true
 			}
 			gc.SetMatchStatus(status)
 		}
@@ -175,7 +175,7 @@ func isFinished(period string) bool {
 	low := strings.ToLower(strings.TrimSpace(period))
 	for _, tok := range []string{
 		"finished", "final", "ended", "ft",
-		"after over time", "after overtime", "after ot",
+		"after over time", "after OVERTIME", "after ot",
 		"after extra time", "aet",
 		"after penalties", "after pen",
 	} {
@@ -237,7 +237,7 @@ func (e *Engine) onMarketData(evt events.Event) error {
 
 			ds := e.display.Get(gc.EID)
 
-			if !gc.Game.HasLiveData() || !ds.DisplayedLive {
+			if !gc.Game.HasLIVEData() || !ds.DisplayedLIVE {
 				return
 			}
 
@@ -272,7 +272,7 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	e.kalshiWSUp.Store(connected)
 
 	if connected {
-		telemetry.Infof("strategy: Kalshi WS connected, waiting for live prices")
+		telemetry.Infof("strategy: Kalshi WS connected, waiting for LIVE prices")
 	} else {
 		telemetry.Warnf("strategy: Kalshi WS disconnected, resetting all ticker prices to 100")
 	}
@@ -329,7 +329,7 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 
 	initialStatus := gu.MatchStatus
 	if initialStatus == "" {
-		initialStatus = "Live"
+		initialStatus = "LIVE"
 	}
 
 	gc.Send(func() {
@@ -351,7 +351,7 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 		}
 
 		ds := e.display.Get(gc.EID)
-		if initialStatus == "Game Start" {
+		if initialStatus == "GAME START" {
 			ds.GameStarted = true
 		}
 		if gc.Game.HasPregame() {
@@ -397,14 +397,13 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 	status := gc.MatchStatus
 
 	ds := e.display.Get(gc.EID)
-	if !ds.DisplayedLive {
-		ds.DisplayedLive = true
+	if !ds.DisplayedLIVE {
+		ds.DisplayedLIVE = true
 	}
-	printGame(gc, status)
+	printGame(gc, string(status))
 
 	switch gc.Sport {
 	case events.SportSoccer:
-		// Skip if training DB not configured, test fixture, or illiquid game.
 		if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 			return
 		}
@@ -412,17 +411,15 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		if !ok {
 			return
 		}
-		// Don't record score changes until Pinnacle live odds have arrived;
-		// without a reference price the row has no useful odds context.
-		if status == "Score Change" && !ss.PinnacleUpdated {
+		if status == events.StatusScoreChange && !ss.PinnacleUpdated {
 			return
 		}
 		var outcome *string
-		if status == "Game Finish" {
+		if status == events.StatusGameFinish {
 			o := regulationOutcome(ss)
 			outcome = &o
 		}
-		row := e.buildSoccerRow(gc, ss, status, outcome)
+		row := e.buildSoccerRow(gc, ss, string(status), outcome)
 		rowID, err := e.soccerTraining.Insert(row)
 		if err != nil {
 			telemetry.Warnf("soccer training: insert failed: %v", err)
@@ -431,7 +428,6 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		e.spawnBackfill(gc, ss, rowID)
 
 	case events.SportHockey:
-		// Skip if training DB not configured, test fixture, or illiquid game.
 		if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
 			return
 		}
@@ -439,17 +435,15 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 		if !ok {
 			return
 		}
-		// Don't record score changes until Pinnacle live odds have arrived;
-		// without a reference price the row has no useful odds context.
-		if status == "Score Change" && !hs.PinnacleUpdated {
+		if status == events.StatusScoreChange && !hs.PinnacleUpdated {
 			return
 		}
 		var outcome *string
-		if status == "Game Finish" {
+		if status == events.StatusGameFinish {
 			o := hockeyOutcome(hs.HomeScore, hs.AwayScore)
 			outcome = &o
 		}
-		row := e.buildHockeyRow(gc, hs, status, outcome)
+		row := e.buildHockeyRow(gc, hs, string(status), outcome)
 		rowID, err := e.hockeyTraining.Insert(row)
 		if err != nil {
 			telemetry.Warnf("hockey training: insert failed: %v", err)
@@ -461,7 +455,7 @@ func (e *Engine) onMatchStatusChange(gc *game.GameContext) {
 
 // onRedCardChange is fired when soccer red card counts change.
 func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
-	printGame(gc, "Red Card")
+	printGame(gc, string(events.StatusRedCard))
 
 	// Skip if training DB not configured, test fixture, or illiquid game.
 	if e.soccerTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
@@ -471,7 +465,7 @@ func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
 	if !ok {
 		return
 	}
-	row := e.buildSoccerRow(gc, ss, "Red Card", nil)
+	row := e.buildSoccerRow(gc, ss, string(events.StatusRedCard), nil)
 	rowID, err := e.soccerTraining.Insert(row)
 	if err != nil {
 		telemetry.Warnf("soccer training: insert failed: %v", err)
@@ -482,11 +476,11 @@ func (e *Engine) onRedCardChange(gc *game.GameContext, homeRC, awayRC int) {
 
 // onPowerPlayChange is fired when hockey power play state transitions.
 func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
-	label := "Power Play End"
+	label := events.StatusPowerPlayEnd
 	if homeOn || awayOn {
-		label = "Power Play"
+		label = events.StatusPowerPlay
 	}
-	printGame(gc, label)
+	printGame(gc, string(label))
 
 	// Skip if training DB not configured, test fixture, or illiquid game.
 	if e.hockeyTraining == nil || isMockGame(gc.EID) || gc.TotalVolume() < minTrainingVolume {
@@ -496,7 +490,7 @@ func (e *Engine) onPowerPlayChange(gc *game.GameContext, homeOn, awayOn bool) {
 	if !ok {
 		return
 	}
-	row := e.buildHockeyRow(gc, hs, label, nil)
+	row := e.buildHockeyRow(gc, hs, string(label), nil)
 	rowID, err := e.hockeyTraining.Insert(row)
 	if err != nil {
 		telemetry.Warnf("hockey training: insert failed: %v", err)

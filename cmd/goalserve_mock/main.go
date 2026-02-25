@@ -130,7 +130,7 @@ func runSoccerMocks(g *gameInfo) {
 	eid := fmt.Sprintf("MOCK-SOC-%d", time.Now().Unix())
 	runSoccerGame(eid, g.homeTeam, g.awayTeam, g.league,
 		[]frame{
-			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "Game Start (0-0, 1st min)"},
+			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "GAME START (0-0, 1st min)"},
 			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
 			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
 			{home: 1, away: 0, period: "1st Half", minute: "23", redH: 0, redA: 0, label: "GOAL! 1-0 (23rd min)"},
@@ -161,7 +161,7 @@ func runHockeyMocks(g *gameInfo) {
 	hEid := fmt.Sprintf("MOCK-HOC-%d", time.Now().Unix())
 	runHockeyGame(hEid, g.homeTeam, g.awayTeam, g.league,
 		[]hockeyFrame{
-			{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "Game Start (0-0)"},
+			{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "GAME START (0-0)"},
 			{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
 			{home: 0, away: 0, period: "1st Period", seconds: "19:26", sts: "", label: "  (warm-up)"},
 			{home: 1, away: 0, period: "1st Period", seconds: "12:45", sts: "", label: "GOAL! 1-0"},
@@ -178,8 +178,8 @@ func runHockeyMocks(g *gameInfo) {
 			{home: 2, away: 1, period: "2nd Period", seconds: "6:42", sts: "", label: "RESTORED 2-1 (overturn rejected)"},
 			{home: 2, away: 2, period: "3rd Period", seconds: "4:10", sts: "", label: "GOAL! 2-2"},
 			{home: 2, away: 2, period: "3rd Period", seconds: "0:00", sts: "", label: "End of regulation"},
-			{home: 2, away: 2, period: "Overtimer", seconds: "5:00", sts: "", label: "OVERTIME starts"},
-			{home: 3, away: 2, period: "Overtimer", seconds: "2:33", sts: "", label: "OT GOAL! 3-2 home wins"},
+			{home: 2, away: 2, period: "OVERTIMEr", seconds: "5:00", sts: "", label: "OVERTIME starts"},
+			{home: 3, away: 2, period: "OVERTIMEr", seconds: "2:33", sts: "", label: "OT GOAL! 3-2 home wins"},
 			{home: 3, away: 2, period: "Finished", seconds: "", sts: "", label: "FINAL 3-2 OT"},
 		},
 	)
@@ -198,7 +198,7 @@ func runFootballMocks(g *gameInfo) {
 	eid := fmt.Sprintf("MOCK-FB-%d", time.Now().Unix())
 	runFootballGame(eid, g.homeTeam, g.awayTeam, g.league,
 		[]footballFrame{
-			{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "Game Start (0-0)"},
+			{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "GAME START (0-0)"},
 			{home: 0, away: 0, period: "1st Quarter", seconds: "14:55", label: "  (warm-up)"},
 			{home: 0, away: 0, period: "1st Quarter", seconds: "14:50", label: "  (warm-up)"},
 			{home: 3, away: 0, period: "1st Quarter", seconds: "8:22", label: "FG! 3-0"},
@@ -467,7 +467,7 @@ func runHockeyGame(eid, homeTeam, awayTeam, league string, frames []hockeyFrame)
 
 func runHockeyOverturnGame(eid, homeTeam, awayTeam, league string) {
 	normal := []hockeyFrame{
-		{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "Game Start (0-0)"},
+		{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "GAME START (0-0)"},
 		{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
 		{home: 1, away: 0, period: "1st Period", seconds: "14:10", sts: "", label: "GOAL! 1-0"},
 		{home: 2, away: 0, period: "2nd Period", seconds: "11:30", sts: "", label: "GOAL! 2-0"},
@@ -514,7 +514,7 @@ func runHockeyOverturnGame(eid, homeTeam, awayTeam, league string) {
 
 func runSoccerOverturnGame(eid, homeTeam, awayTeam, league string) {
 	normal := []frame{
-		{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "Game Start (0-0, 1st min)"},
+		{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "GAME START (0-0, 1st min)"},
 		{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
 		{home: 1, away: 0, period: "1st Half", minute: "18", redH: 0, redA: 0, label: "GOAL! 1-0 (18th min)"},
 		{home: 2, away: 0, period: "2nd Half", minute: "42", redH: 0, redA: 0, label: "GOAL! 2-0 (42nd min)"},
@@ -624,7 +624,7 @@ func runFootballGame(eid, homeTeam, awayTeam, league string, frames []footballFr
 
 func runFootballOverturnGame(eid, homeTeam, awayTeam, league string) {
 	normal := []footballFrame{
-		{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "Game Start (0-0)"},
+		{home: 0, away: 0, period: "1st Quarter", seconds: "15:00", label: "GAME START (0-0)"},
 		{home: 0, away: 0, period: "1st Quarter", seconds: "14:55", label: "  (warm-up)"},
 		{home: 7, away: 0, period: "1st Quarter", seconds: "9:30", label: "TD+XP! 7-0"},
 		{home: 14, away: 0, period: "2nd Quarter", seconds: "7:15", label: "TD+XP! 14-0"},

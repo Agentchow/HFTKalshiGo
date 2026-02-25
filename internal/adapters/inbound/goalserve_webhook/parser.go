@@ -241,7 +241,7 @@ func hockeyTimeRemaining(period, seconds string) float64 {
 		return periodMins + 20
 	case strings.Contains(period, "3rd"):
 		return periodMins
-	case strings.Contains(period, "overtime") || period == "ot":
+	case strings.Contains(period, "OVERTIME") || period == "ot":
 		return 5
 	case strings.Contains(period, "shootout") || strings.Contains(period, "penalties"):
 		return 0
@@ -261,7 +261,7 @@ func footballTimeRemaining(period string) float64 {
 		return 15
 	case strings.Contains(period, "q4") || strings.Contains(period, "4th quarter"):
 		return 0
-	case strings.Contains(period, "overtime") || period == "ot":
+	case strings.Contains(period, "OVERTIME") || period == "ot":
 		return 0
 	default:
 		return 60
@@ -341,7 +341,7 @@ func (p *Parser) parseOdds(ev *WebhookEvent) *ParsedOdds {
 		"1st period", "2nd period", "3rd period",
 		"half time", "halftime",
 		"minute", "corner", "card", "handicap",
-		"extra time", "overtime",
+		"extra time", "OVERTIME",
 	}
 
 	var mlMarket *OddsMarket
@@ -490,37 +490,35 @@ func intFromStringMap(m map[string]string, keys ...string) int {
 }
 
 // inferMatchStatus determines the match status from a single webhook snapshot.
-// Detects Game Start (0-0, first period, early clock) and Overtime (hockey).
-// Score Change is determined by the engine via state diffing.
-func (p *Parser) inferMatchStatus(ev *WebhookEvent, homeScore, awayScore int, period string) string {
+// Detects GAME START (0-0, first period, early clock) and OVERTIME (hockey).
+// SCORE CHANGE is determined by the engine via state diffing.
+func (p *Parser) inferMatchStatus(ev *WebhookEvent, homeScore, awayScore int, period string) events.MatchStatus {
 	low := strings.ToLower(strings.TrimSpace(period))
 
-	// Game Start: 0-0, first period/half, early in the game.
 	if homeScore == 0 && awayScore == 0 {
 		switch p.sport {
 		case events.SportSoccer:
 			if strings.Contains(low, "1st") {
 				if m, err := strconv.Atoi(strings.Split(ev.Info.Minute, ":")[0]); err == nil && m <= 5 {
-					return "Game Start"
+					return events.StatusGameStart
 				}
 			}
 		case events.SportHockey:
 			if strings.Contains(low, "1st") {
 				if mins := parsePeriodClock(ev.Info.Seconds, 0); mins >= 17 {
-					return "Game Start"
+					return events.StatusGameStart
 				}
 			}
 		}
 	}
 
-	// Overtime (hockey): GoalServe uses "Overtimer" for the OT period.
 	if p.sport == events.SportHockey {
-		if strings.Contains(low, "overtime") || strings.Contains(low, "overtimer") || low == "ot" {
-			return "Overtime"
+		if strings.Contains(low, "overtime") || low == "ot" {
+			return events.StatusOvertime
 		}
 	}
 
-	return "Live"
+	return events.StatusLive
 }
 
 // extractPowerPlay parses the hockey STS field for power play state and

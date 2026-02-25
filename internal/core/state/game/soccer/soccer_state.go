@@ -4,9 +4,10 @@ import (
 	"strings"
 
 	game "github.com/charleschow/hft-trading/internal/core/state/game"
+	"github.com/charleschow/hft-trading/internal/events"
 )
 
-// SoccerState holds live state for a single soccer match.
+// SoccerState holds LIVE state for a single soccer match.
 // Mirrors SoccerGame from the Python codebase.
 type SoccerState struct {
 	EID       string
@@ -56,7 +57,7 @@ type SoccerState struct {
 
 	game.ScoreDropTracker
 
-	hasLiveData           bool
+	hasLIVEData           bool
 	regHomeFrozen         *int
 	regAwayFrozen         *int
 	regulationScoreFrozen bool
@@ -95,10 +96,10 @@ func (s *SoccerState) GetHomeScore() int         { return s.HomeScore }
 func (s *SoccerState) GetAwayScore() int         { return s.AwayScore }
 func (s *SoccerState) GetPeriod() string         { return s.Half }
 func (s *SoccerState) GetTimeRemaining() float64 { return s.TimeLeft }
-func (s *SoccerState) HasLiveData() bool         { return s.hasLiveData }
+func (s *SoccerState) HasLIVEData() bool         { return s.hasLIVEData }
 func (s *SoccerState) HasPregame() bool          { return s.PregameApplied }
 
-func (s *SoccerState) DeduplicateStatus(status string) string { return status }
+func (s *SoccerState) DeduplicateStatus(status events.MatchStatus) events.MatchStatus { return status }
 
 func (s *SoccerState) GoalDiff() int { return s.HomeScore - s.AwayScore }
 
@@ -136,15 +137,15 @@ func (s *SoccerState) IsRegulationOver() bool {
 	return s.IsFinished() || s.IsExtraTime() || s.IsPenalties()
 }
 
-func (s *SoccerState) IsLive() bool {
+func (s *SoccerState) IsLIVE() bool {
 	return s.Half != "" && !s.IsFinished()
 }
 
 func (s *SoccerState) UpdateScore(homeScore, awayScore int, half string, timeRemain float64) bool {
-	firstUpdate := !s.hasLiveData
+	firstUpdate := !s.hasLIVEData
 	scoreChanged := s.HomeScore != homeScore || s.AwayScore != awayScore
 
-	if s.hasLiveData && half == s.Half && timeRemain > s.TimeLeft {
+	if s.hasLIVEData && half == s.Half && timeRemain > s.TimeLeft {
 		timeRemain = s.TimeLeft
 	}
 
@@ -164,7 +165,7 @@ func (s *SoccerState) UpdateScore(homeScore, awayScore int, half string, timeRem
 	s.AwayScore = awayScore
 	s.Half = half
 	s.TimeLeft = timeRemain
-	s.hasLiveData = true
+	s.hasLIVEData = true
 
 	return firstUpdate || scoreChanged
 }

@@ -9,11 +9,11 @@ import (
 )
 
 type geniusMessage struct {
-	Type    string `json:"type"`
+	Type      string `json:"type"`
 	FixtureID string `json:"fixture_id"`
-	Sport   string `json:"sport"`
-	League  string `json:"league"`
-	Home    struct {
+	Sport     string `json:"sport"`
+	League    string `json:"league"`
+	Home      struct {
 		Name  string `json:"name"`
 		Score int    `json:"score"`
 	} `json:"home"`
@@ -21,9 +21,9 @@ type geniusMessage struct {
 		Name  string `json:"name"`
 		Score int    `json:"score"`
 	} `json:"away"`
-	Period    string  `json:"period"`
-	Clock     string  `json:"clock"`
-	TimeLeft  float64 `json:"time_left"`
+	Period   string  `json:"period"`
+	Clock    string  `json:"clock"`
+	TimeLeft float64 `json:"time_left"`
 }
 
 func ParseMessage(data []byte) []events.Event {
@@ -49,7 +49,7 @@ func ParseMessage(data []byte) []events.Event {
 		AwayScore:   msg.Away.Score,
 		Period:      msg.Period,
 		TimeLeft:    msg.TimeLeft,
-		MatchStatus: "Live",
+		MatchStatus: events.StatusLive,
 	}
 
 	return []events.Event{{

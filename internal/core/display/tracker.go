@@ -9,7 +9,7 @@ import (
 // from the game's own goroutine (inside gc.Send closures), so individual
 // fields require no synchronization.
 type State struct {
-	DisplayedLive   bool
+	DisplayedLIVE   bool
 	GameStarted     bool
 	Finaled         bool
 	LastEdgeDisplay time.Time

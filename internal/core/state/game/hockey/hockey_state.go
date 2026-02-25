@@ -4,9 +4,10 @@ import (
 	"strings"
 
 	game "github.com/charleschow/hft-trading/internal/core/state/game"
+	"github.com/charleschow/hft-trading/internal/events"
 )
 
-// HockeyState holds the live state for a single hockey game.
+// HockeyState holds the LIVE state for a single hockey game.
 // Mirrors HockeyGame from the Python codebase.
 type HockeyState struct {
 	EID       string
@@ -50,9 +51,9 @@ type HockeyState struct {
 
 	game.ScoreDropTracker
 
-	OvertimeNotified bool
+	OVERTIMENotified bool
 
-	hasLiveData    bool
+	hasLIVEData    bool
 	finaled        bool
 	shootoutLogged bool
 }
@@ -78,23 +79,23 @@ func (h *HockeyState) GetHomeScore() int         { return h.HomeScore }
 func (h *HockeyState) GetAwayScore() int         { return h.AwayScore }
 func (h *HockeyState) GetPeriod() string         { return h.Period }
 func (h *HockeyState) GetTimeRemaining() float64 { return h.TimeLeft }
-func (h *HockeyState) HasLiveData() bool         { return h.hasLiveData }
+func (h *HockeyState) HasLIVEData() bool         { return h.hasLIVEData }
 func (h *HockeyState) HasPregame() bool          { return h.PregameApplied }
 
-func (h *HockeyState) DeduplicateStatus(status string) string {
-	if status != "Overtime" {
+func (h *HockeyState) DeduplicateStatus(status events.MatchStatus) events.MatchStatus {
+	if status != events.StatusOvertime {
 		return status
 	}
-	if h.OvertimeNotified {
-		return "Live"
+	if h.OVERTIMENotified {
+		return events.StatusLive
 	}
-	h.OvertimeNotified = true
+	h.OVERTIMENotified = true
 	return status
 }
 
 func (h *HockeyState) Lead() int { return h.HomeScore - h.AwayScore }
 
-func (h *HockeyState) IsOvertime() bool {
+func (h *HockeyState) IsOVERTIME() bool {
 	p := strings.ToLower(strings.TrimSpace(h.Period))
 	return strings.Contains(p, "overtime") || p == "ot" || p == "penalties" || p == "shootout"
 }
@@ -102,21 +103,20 @@ func (h *HockeyState) IsOvertime() bool {
 func (h *HockeyState) IsFinished() bool {
 	p := strings.ToLower(strings.TrimSpace(h.Period))
 	return p == "finished" || p == "final" || p == "ended" ||
-		strings.Contains(p, "after over time") ||
 		strings.Contains(p, "after overtime") ||
 		strings.Contains(p, "after ot")
 }
 
-func (h *HockeyState) IsLive() bool {
+func (h *HockeyState) IsLIVE() bool {
 	return h.Period != "" && !h.IsFinished()
 }
 
 func (h *HockeyState) UpdateScore(homeScore, awayScore int, period string, timeRemain float64) bool {
-	firstUpdate := !h.hasLiveData
+	firstUpdate := !h.hasLIVEData
 	scoreChanged := h.HomeScore != homeScore || h.AwayScore != awayScore
 
 	// Monotonic decrease guard
-	if h.hasLiveData && period == h.Period && timeRemain > h.TimeLeft {
+	if h.hasLIVEData && period == h.Period && timeRemain > h.TimeLeft {
 		timeRemain = h.TimeLeft
 	}
 
@@ -124,7 +124,7 @@ func (h *HockeyState) UpdateScore(homeScore, awayScore int, period string, timeR
 	h.AwayScore = awayScore
 	h.Period = period
 	h.TimeLeft = timeRemain
-	h.hasLiveData = true
+	h.hasLIVEData = true
 
 	return firstUpdate || scoreChanged
 }

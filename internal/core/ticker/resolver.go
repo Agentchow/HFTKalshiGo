@@ -278,7 +278,7 @@ func (r *Resolver) Resolve(ctx context.Context, sport events.Sport, homeTeam, aw
 // matchCandidate pairs a matching market with its temporal distance from the game.
 type matchCandidate struct {
 	market   kalshi_http.Market
-	timeDiff time.Duration // abs(market expiry - game start)
+	timeDiff time.Duration // abs(market expiry - GAME START)
 }
 
 // hockeyEventCandidate is a parsed hockey event group that matched the team pair.

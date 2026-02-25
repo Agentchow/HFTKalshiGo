@@ -24,7 +24,7 @@ const (
 // parses incoming messages, and publishes GameUpdateEvents to the bus.
 type Client struct {
 	sport         string // GoalServe sport key: "soccer", "hockey", "amfootball"
-	wsBaseURL     string // e.g. "ws://live.goalserve.com/ws"
+	wsBaseURL     string // e.g. "ws://LIVE.goalserve.com/ws"
 	tokenProvider *TokenProvider
 	bus           *events.Bus
 	store         *Store
@@ -174,5 +174,5 @@ func (c *Client) handleAvl(raw []byte) {
 		telemetry.Debugf("goalserve_ws[%s]: parse avl: %v", c.sport, err)
 		return
 	}
-	telemetry.Debugf("goalserve_ws[%s]: avl — %d live events", c.sport, len(msg.Evts))
+	telemetry.Debugf("goalserve_ws[%s]: avl — %d LIVE events", c.sport, len(msg.Evts))
 }

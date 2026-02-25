@@ -4,9 +4,10 @@ import (
 	"strings"
 
 	game "github.com/charleschow/hft-trading/internal/core/state/game"
+	"github.com/charleschow/hft-trading/internal/events"
 )
 
-// FootballState holds live state for a single American football game.
+// FootballState holds LIVE state for a single American football game.
 type FootballState struct {
 	EID       string
 	League    string // "NFL", "NCAAF"
@@ -30,7 +31,7 @@ type FootballState struct {
 
 	game.ScoreDropTracker
 
-	hasLiveData  bool
+	hasLIVEData  bool
 	orderedSides map[scoreKey]bool
 	finaled      bool
 }
@@ -61,14 +62,14 @@ func (f *FootballState) GetHomeScore() int         { return f.HomeScore }
 func (f *FootballState) GetAwayScore() int         { return f.AwayScore }
 func (f *FootballState) GetPeriod() string         { return f.Quarter }
 func (f *FootballState) GetTimeRemaining() float64 { return f.TimeLeft }
-func (f *FootballState) HasLiveData() bool         { return f.hasLiveData }
+func (f *FootballState) HasLIVEData() bool         { return f.hasLIVEData }
 func (f *FootballState) HasPregame() bool          { return true }
 
-func (f *FootballState) DeduplicateStatus(status string) string { return status }
+func (f *FootballState) DeduplicateStatus(status events.MatchStatus) events.MatchStatus { return status }
 
 func (f *FootballState) Lead() int { return f.HomeScore - f.AwayScore }
 
-func (f *FootballState) IsOvertime() bool {
+func (f *FootballState) IsOVERTIME() bool {
 	q := strings.ToLower(strings.TrimSpace(f.Quarter))
 	return strings.Contains(q, "overtime") || q == "ot"
 }
@@ -79,15 +80,15 @@ func (f *FootballState) IsFinished() bool {
 		strings.Contains(q, "after overtime")
 }
 
-func (f *FootballState) IsLive() bool {
+func (f *FootballState) IsLIVE() bool {
 	return f.Quarter != "" && !f.IsFinished()
 }
 
 func (f *FootballState) UpdateScore(homeScore, awayScore int, quarter string, timeRemain float64) bool {
-	firstUpdate := !f.hasLiveData
+	firstUpdate := !f.hasLIVEData
 	scoreChanged := f.HomeScore != homeScore || f.AwayScore != awayScore
 
-	if f.hasLiveData && quarter == f.Quarter && timeRemain > f.TimeLeft {
+	if f.hasLIVEData && quarter == f.Quarter && timeRemain > f.TimeLeft {
 		timeRemain = f.TimeLeft
 	}
 
@@ -95,7 +96,7 @@ func (f *FootballState) UpdateScore(homeScore, awayScore int, quarter string, ti
 	f.AwayScore = awayScore
 	f.Quarter = quarter
 	f.TimeLeft = timeRemain
-	f.hasLiveData = true
+	f.hasLIVEData = true
 
 	return firstUpdate || scoreChanged
 }

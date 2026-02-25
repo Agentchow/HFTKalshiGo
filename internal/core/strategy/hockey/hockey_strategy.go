@@ -28,7 +28,7 @@ type PregameOddsProvider interface {
 }
 
 // Strategy implements the hockey-specific trading logic.
-// On each score change it:
+// On each SCORE CHANGE it:
 //  1. Updates the game state
 //  2. Runs the score-drop guard
 //  3. Recomputes model probabilities (pregame strength + projected odds)
@@ -99,7 +99,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	// Score-drop guard
 	overturn := false
-	if hs.HasLiveData() {
+	if hs.HasLIVEData() {
 		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":
@@ -162,7 +162,7 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []
 // in the model or edge calculations.
 func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 	lead := float64(hs.Lead())
-	if hs.IsOvertime() && lead != 0 {
+	if hs.IsOVERTIME() && lead != 0 {
 		if lead > 0 {
 			hs.ModelHomePct = 100.0
 			hs.ModelAwayPct = 0.0

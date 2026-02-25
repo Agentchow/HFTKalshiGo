@@ -134,7 +134,7 @@ func (s *Server) writePump(c *sportClient) {
 	}
 }
 
-// readPump keeps the connection alive by reading pongs / close frames.
+// readPump keeps the connection aLIVE by reading pongs / close frames.
 // No upstream messages are expected from sport processes.
 // On exit it signals writePump via c.done (never closes c.send).
 func (s *Server) readPump(c *sportClient) {

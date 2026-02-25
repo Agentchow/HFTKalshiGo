@@ -1503,18 +1503,18 @@ paths:
         '500':
           description: Internal server error
 
-  /live_data/{type}/milestone/{milestone_id}:
+  /LIVE_data/{type}/milestone/{milestone_id}:
     get:
-      operationId: GetLiveData
-      summary: Get Live Data
-      description: Get live data for a specific milestone
+      operationId: GetLIVEData
+      summary: Get LIVE Data
+      description: Get LIVE data for a specific milestone
       tags:
-        - live-data
+        - LIVE-data
       parameters:
         - name: type
           in: path
           required: true
-          description: Type of live data
+          description: Type of LIVE data
           schema:
             type: string
         - name: milestone_id
@@ -1525,23 +1525,23 @@ paths:
             type: string
       responses:
         '200':
-          description: Live data retrieved successfully
+          description: LIVE data retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetLiveDataResponse'
+                $ref: '#/components/schemas/GetLIVEDataResponse'
         '404':
-          description: Live data not found
+          description: LIVE data not found
         '500':
           description: Internal server error
 
-  /live_data/batch:
+  /LIVE_data/batch:
     get:
-      operationId: GetLiveDatas
-      summary: Get Multiple Live Data
-      description: Get live data for multiple milestones
+      operationId: GetLIVEDatas
+      summary: Get Multiple LIVE Data
+      description: Get LIVE data for multiple milestones
       tags:
-        - live-data
+        - LIVE-data
       parameters:
         - name: milestone_ids
           in: query
@@ -1556,11 +1556,11 @@ paths:
           explode: true
       responses:
         '200':
-          description: Live data retrieved successfully
+          description: LIVE data retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetLiveDatasResponse'
+                $ref: '#/components/schemas/GetLIVEDatasResponse'
         '500':
           description: Internal server error
 
@@ -3293,7 +3293,7 @@ components:
       required:
         - type
         - message
-        - delivery_time
+        - deLIVEry_time
         - status
       properties:
         type:
@@ -3303,10 +3303,10 @@ components:
         message:
           type: string
           description: The message contained within the announcement.
-        delivery_time:
+        deLIVEry_time:
           type: string
           format: date-time
-          description: The time the announcement was delivered.
+          description: The time the announcement was deLIVEred.
         status:
           type: string
           enum: [active, inactive]
@@ -3634,8 +3634,8 @@ components:
           nullable: true
           description: Maximum close price of any market during the candlestick period (in dollars).
 
-    # Live Data schemas
-    LiveData:
+    # LIVE Data schemas
+    LIVEData:
       type: object
       required:
         - type
@@ -3644,32 +3644,32 @@ components:
       properties:
         type:
           type: string
-          description: Type of live data
+          description: Type of LIVE data
         details:
           type: object
           additionalProperties: true
-          description: Live data details as a flexible object
+          description: LIVE data details as a flexible object
         milestone_id:
           type: string
           description: Milestone ID
 
-    GetLiveDataResponse:
+    GetLIVEDataResponse:
       type: object
       required:
-        - live_data
+        - LIVE_data
       properties:
-        live_data:
-          $ref: '#/components/schemas/LiveData'
+        LIVE_data:
+          $ref: '#/components/schemas/LIVEData'
 
-    GetLiveDatasResponse:
+    GetLIVEDatasResponse:
       type: object
       required:
-        - live_datas
+        - LIVE_datas
       properties:
-        live_datas:
+        LIVE_datas:
           type: array
           items:
-            $ref: '#/components/schemas/LiveData'
+            $ref: '#/components/schemas/LIVEData'
 
     GetBalanceResponse:
       type: object
@@ -6232,8 +6232,8 @@ tags:
     description: Multivariate event collection endpoints
   - name: exchange
     description: Exchange status and information endpoints
-  - name: live-data
-    description: Live data endpoints
+  - name: LIVE-data
+    description: LIVE data endpoints
   - name: markets
     description: Market data endpoints
   - name: milestone

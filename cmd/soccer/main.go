@@ -69,6 +69,8 @@ func main() {
 	}
 	defer trainingStore.Close()
 
+	telemetry.Infof("Listening for soccer games via fanout (%s) (GoalServe)...", cfg.FanoutAddr)
+
 	// ── Strategy ───────────────────────────────────────────────
 	registry := strategy.NewRegistry()
 	registry.Register(events.SportSoccer, soccerStrat.NewStrategy(pregame))

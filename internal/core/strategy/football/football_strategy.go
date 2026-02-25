@@ -25,7 +25,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		return strategy.EvalResult{}
 	}
 
-	if fs.HasLiveData() {
+	if fs.HasLIVEData() {
 		result := fs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":

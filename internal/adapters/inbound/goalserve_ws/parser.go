@@ -133,6 +133,8 @@ func mapPeriod(sport events.Sport, pc int) string {
 	switch sport {
 	case events.SportSoccer:
 		switch pc {
+		case 0:
+			return "Not Started"
 		case 1:
 			return "1st Half"
 		case 2:
@@ -153,6 +155,8 @@ func mapPeriod(sport events.Sport, pc int) string {
 		}
 	case events.SportHockey:
 		switch pc {
+		case 0:
+			return "Not Started"
 		case 1:
 			return "1st Period"
 		case 2:
@@ -160,7 +164,7 @@ func mapPeriod(sport events.Sport, pc int) string {
 		case 3:
 			return "3rd Period"
 		case 4:
-			return "Overtime"
+			return "OVERTIME"
 		case 5:
 			return "Shootout"
 		case 6:
@@ -177,6 +181,8 @@ func mapPeriod(sport events.Sport, pc int) string {
 		}
 	case events.SportFootball:
 		switch pc {
+		case 0:
+			return "Not Started"
 		case 1:
 			return "Q1"
 		case 2:
@@ -188,7 +194,7 @@ func mapPeriod(sport events.Sport, pc int) string {
 		case 5:
 			return "Q4"
 		case 6:
-			return "Overtime"
+			return "OVERTIME"
 		case 255:
 			return "Finished"
 		default:
@@ -200,20 +206,24 @@ func mapPeriod(sport events.Sport, pc int) string {
 }
 
 // calcTimeRemaining computes minutes remaining from period code and elapsed seconds.
+// et is total elapsed seconds since kickoff (not period-relative).
 func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 	switch sport {
 	case events.SportSoccer:
+		elapsed := float64(et) / 60.0
 		switch pc {
+		case 0:
+			return 90.0
 		case 1:
-			remain := 45.0 - float64(et)/60.0
+			remain := 90.0 - elapsed
 			if remain < 0 {
 				remain = 0
 			}
-			return remain + 45.0 // plus second half
+			return remain
 		case 2:
-			return 45.0 // halftime, second half remaining
+			return 45.0
 		case 3:
-			remain := 45.0 - float64(et)/60.0
+			remain := 90.0 - elapsed
 			if remain < 0 {
 				remain = 0
 			}
@@ -222,43 +232,33 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		periodLen := 20.0 * 60.0 // 20 min periods
-		periodsAfter := 0
+		totalGame := 60.0 // 3 x 20 min periods
+		remain := totalGame - float64(et)/60.0
 		switch pc {
-		case 1:
-			periodsAfter = 2
-		case 2:
-			periodsAfter = 1
-		case 3:
-			periodsAfter = 0
+		case 0:
+			return 60.0
+		case 1, 2, 3:
+			if remain < 0 {
+				remain = 0
+			}
+			return remain
 		default:
 			return 0
 		}
-		remain := (periodLen - float64(et)) / 60.0
-		if remain < 0 {
-			remain = 0
-		}
-		return remain + float64(periodsAfter)*20.0
 	case events.SportFootball:
-		qLen := 15.0 * 60.0
-		quartersAfter := 0
+		totalGame := 60.0 // 4 x 15 min quarters
+		remain := totalGame - float64(et)/60.0
 		switch pc {
-		case 1:
-			quartersAfter = 3
-		case 2:
-			quartersAfter = 2
-		case 4:
-			quartersAfter = 1
-		case 5:
-			quartersAfter = 0
+		case 0:
+			return 60.0
+		case 1, 2, 4, 5:
+			if remain < 0 {
+				remain = 0
+			}
+			return remain
 		default:
 			return 0
 		}
-		remain := (qLen - float64(et)) / 60.0
-		if remain < 0 {
-			remain = 0
-		}
-		return remain + float64(quartersAfter)*15.0
 	}
 	return 0
 }
@@ -425,36 +425,32 @@ var finishStateCodes = map[string]bool{
 	"90000": true, // Abandoned
 }
 
-func inferMatchStatus(sport events.Sport, msg *UpdtMessage, homeScore, awayScore int) string {
-	// Primary: period code 255 = finished.
+func inferMatchStatus(sport events.Sport, msg *UpdtMessage, homeScore, awayScore int) events.MatchStatus {
 	if msg.PC == 255 {
-		return "Finished"
+		return events.StatusGameFinish
 	}
 
-	// Secondary: state code based finish detection.
 	if msg.SC != "" && finishStateCodes[msg.SC] {
 		telemetry.Infof("goalserve_ws: game %s finished via sc=%s (pc=%d)", msg.ID, msg.SC, msg.PC)
-		return "Finished"
+		return events.StatusGameFinish
 	}
 
-	// Game Start: first period, early elapsed time, 0-0.
 	if homeScore == 0 && awayScore == 0 {
 		switch sport {
 		case events.SportSoccer:
 			if msg.PC == 1 && msg.ET <= 300 {
-				return "Game Start"
+				return events.StatusGameStart
 			}
 		case events.SportHockey:
 			if msg.PC == 1 && msg.ET <= 180 {
-				return "Game Start"
+				return events.StatusGameStart
 			}
 		}
 	}
 
-	// Overtime
 	if sport == events.SportHockey && (msg.PC == 4 || msg.PC == 5) {
-		return "Overtime"
+		return events.StatusOvertime
 	}
 
-	return "Live"
+	return events.StatusLive
 }

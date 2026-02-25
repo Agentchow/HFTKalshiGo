@@ -11,7 +11,7 @@ const (
 )
 
 // Event is the envelope that flows through the event bus.
-// Every domain event (score change, market update, order intent) is wrapped in one.
+// Every domain event (SCORE CHANGE, market update, order intent) is wrapped in one.
 type Event struct {
 	ID        string
 	Type      EventType

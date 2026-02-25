@@ -101,7 +101,7 @@ channels:
 
   control_frames:
     address: /
-    title: Connection Keep-Alive
+    title: Connection Keep-ALIVE
     description: |
       WebSocket control frames for connection management.
 
@@ -121,7 +121,7 @@ channels:
     address: orderbook_delta
     title: Orderbook Updates
     description: |
-      Real-time orderbook price level changes. Provides incremental updates to maintain a live orderbook.
+      Real-time orderbook price level changes. Provides incremental updates to maintain a LIVE orderbook.
 
       **Requirements:**
       - Market specification required:

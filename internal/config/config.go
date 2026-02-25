@@ -90,8 +90,8 @@ func Load() *Config {
 		KalshiKeyFile: keyFile,
 
 		GoalserveWSEnabled:   envStr("GOALSERVE_WS_ENABLED", "false") == "true",
-		GoalserveWSAuthURL:   envStr("GOALSERVE_WS_AUTH_URL", "http://live.goalserve.com/api/v1/auth/gettoken"),
-		GoalserveWSURL:       envStr("GOALSERVE_WS_URL", "ws://live.goalserve.com/ws"),
+		GoalserveWSAuthURL:   envStr("GOALSERVE_WS_AUTH_URL", "http://LIVE.goalserve.com/api/v1/auth/gettoken"),
+		GoalserveWSURL:       envStr("GOALSERVE_WS_URL", "ws://LIVE.goalserve.com/ws"),
 		GoalserveWSSports:    envStr("GOALSERVE_WS_SPORTS", "soccer,hockey,amfootball"),
 		GoalserveWSStorePath: envStr("GOALSERVE_WS_STORE_PATH", "data/goalserve_ws.db"),
 

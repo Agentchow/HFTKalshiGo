@@ -1,0 +1,14 @@
+---
+description: Training database data quality expectations
+alwaysApply: true
+---
+
+# Training Data Notes
+
+The soccer and hockey training DBs (`data/soccer_training.db`, `data/hockey_training.db`) record live game snapshots from the GoalServe feed. Known characteristics that are **normal and expected** — do not flag these as issues:
+
+- **Missing `Game Finish` events / NULL `actual_outcome`**: The process is not always running. If it was stopped mid-game, the final snapshot and outcome backfill simply won't exist. This is fine.
+- **Score regressions** (score goes up then back down): GoalServe sometimes retracts/corrects goals. A score going backwards between consecutive snapshots is a real feed event, not a bug.
+- **Inconsistent `event_type` casing** (e.g. `Game Start` vs `GAME START`): Originates from the upstream feed. Not a data quality problem.
+- **Incomplete games / few snapshots**: Same as missing finish — the process wasn't running for the full duration. Not actionable.
+- **NULL odds columns**: Backfill is async and best-effort. Some markets may not exist. NULLs are expected.

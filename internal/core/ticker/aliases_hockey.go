@@ -28,6 +28,7 @@ var HockeyAliases = map[string]string{
 	"bak condors":                    "bakersfield condors",
 	"bri islanders":                  "bridgeport islanders",
 	"cal wranglers":                  "calgary wranglers",
+	"cgy wranglers":                  "calgary wranglers",
 	"cha checkers":                   "charlotte checkers",
 	"cv firebirds":                   "coachella valley firebirds",
 	"gr griffins":                    "grand rapids griffins",

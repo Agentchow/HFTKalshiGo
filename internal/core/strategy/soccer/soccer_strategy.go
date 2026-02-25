@@ -109,16 +109,16 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		switch result {
 		case "new_drop":
 			if tracked {
-				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
-					result, ss.AwayTeam, ss.HomeTeam, gu.EID,
+				telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
+					ss.HomeTeam, ss.AwayTeam,
 					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			}
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
 			if tracked && time.Since(s.lastPendingLog) >= 5*time.Second {
-				telemetry.Infof("soccer: score drop %s for %s @ %s [%s] (%d-%d -> %d-%d)",
-					result, ss.AwayTeam, ss.HomeTeam, gu.EID,
+				telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
+					ss.HomeTeam, ss.AwayTeam,
 					ss.GetHomeScore(), ss.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}

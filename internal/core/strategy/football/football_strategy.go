@@ -30,23 +30,23 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		result := fs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
 		switch result {
 		case "new_drop":
-			telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
-				result, gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
+			telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
+				gu.HomeTeam, gu.AwayTeam, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
 			if time.Since(s.lastPendingLog) >= 5*time.Second {
-				telemetry.Infof("football: score drop %s for %s (%d-%d -> %d-%d)",
-					result, gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
+				telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
+					gu.HomeTeam, gu.AwayTeam, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 				s.lastPendingLog = time.Now()
 			}
 			return strategy.EvalResult{}
 		case "rejected":
-			telemetry.Infof("[OVERTURN-REJECTED] %s (score restored to %d-%d)",
-				gu.EID, gu.HomeScore, gu.AwayScore)
+			telemetry.Infof("[OVERTURN-REJECTED] %s vs %s (score restored to %d-%d)",
+				gu.HomeTeam, gu.AwayTeam, gu.HomeScore, gu.AwayScore)
 		case "confirmed":
-			telemetry.Infof("[OVERTURN-CONFIRMED] %s (%d-%d -> %d-%d)",
-				gu.EID, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
+			telemetry.Infof("[OVERTURN-CONFIRMED] %s vs %s (%d-%d -> %d-%d)",
+				gu.HomeTeam, gu.AwayTeam, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
 		}
 	}
 

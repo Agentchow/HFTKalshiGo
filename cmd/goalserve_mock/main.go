@@ -130,7 +130,8 @@ func runSoccerMocks(g *gameInfo) {
 	eid := fmt.Sprintf("MOCK-SOC-%d", time.Now().Unix())
 	runSoccerGame(eid, g.homeTeam, g.awayTeam, g.league,
 		[]frame{
-			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "GAME START (0-0, 1st min)"},
+			{home: 0, away: 0, period: "", minute: "0", redH: 0, redA: 0, label: "PREGAME (0-0, 1st min)"},
+			{home: 0, away: 0, period: "1st Half", minute: "0", redH: 0, redA: 0, label: "GAME START (0-0, 1st min)"},
 			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
 			{home: 0, away: 0, period: "1st Half", minute: "1", redH: 0, redA: 0, label: "  (warm-up)"},
 			{home: 1, away: 0, period: "1st Half", minute: "23", redH: 0, redA: 0, label: "GOAL! 1-0 (23rd min)"},
@@ -161,7 +162,8 @@ func runHockeyMocks(g *gameInfo) {
 	hEid := fmt.Sprintf("MOCK-HOC-%d", time.Now().Unix())
 	runHockeyGame(hEid, g.homeTeam, g.awayTeam, g.league,
 		[]hockeyFrame{
-			{home: 0, away: 0, period: "1st Period", seconds: "19:30", sts: "", label: "GAME START (0-0)"},
+			{home: 0, away: 0, period: "", seconds: "0:00", sts: "", label: "PREGAME (0-0)"},
+			{home: 0, away: 0, period: "1st Period", seconds: "20:00", sts: "", label: "GAME START (0-0)"},
 			{home: 0, away: 0, period: "1st Period", seconds: "19:28", sts: "", label: "  (warm-up)"},
 			{home: 0, away: 0, period: "1st Period", seconds: "19:26", sts: "", label: "  (warm-up)"},
 			{home: 1, away: 0, period: "1st Period", seconds: "12:45", sts: "", label: "GOAL! 1-0"},

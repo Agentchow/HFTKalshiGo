@@ -55,6 +55,9 @@ type Config struct {
 	HockeyTrainingDBPath     string
 	TrainingBackfillDelaySec int
 
+	// Overturns
+	OverturnDBPath string
+
 	// Telemetry
 	LogLevel string
 }
@@ -113,6 +116,8 @@ func Load() *Config {
 		SoccerTrainingDBPath:     envStr("SOCCER_TRAINING_DB_PATH", "data/soccer_training.db"),
 		HockeyTrainingDBPath:     envStr("HOCKEY_TRAINING_DB_PATH", "data/hockey_training.db"),
 		TrainingBackfillDelaySec: envInt("TRAINING_BACKFILL_DELAY_SEC", 10),
+
+		OverturnDBPath: envStr("OVERTURN_DB_PATH", "data/overturns.db"),
 
 		LogLevel: envStr("LOG_LEVEL", "info"),
 	}

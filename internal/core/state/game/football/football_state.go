@@ -110,6 +110,16 @@ func (f *FootballState) SetTickers(home, away, _ string) {
 	f.AwayTicker = away
 }
 
+func (f *FootballState) SetIdentifiers(eid, league string) {
+	f.EID = eid
+	f.League = league
+}
+
+func (f *FootballState) SetPregame(home, away, _ float64, _ float64) {
+	f.HomePregameStrength = home
+	f.AwayPregameStrength = away
+}
+
 func (f *FootballState) RecalcEdge(_ map[string]*game.TickerData) {
 	// TODO: implement football edge calculation
 }

@@ -25,11 +25,21 @@ type Fill struct {
 	CostCents int
 }
 
+// OverturnInfo captures the score before and after an overturn event.
+// Set by the strategy on GameContext.LastOverturn before calling Notify,
+// so observers can read the details without digging into sport state.
+type OverturnInfo struct {
+	OldHome int
+	OldAway int
+	NewHome int
+	NewAway int
+}
+
 // GameContext is the single source of truth for one game.
 //
-// A GameContext is created only when a GoalServe game is successfully
-// matched to a Kalshi market — not by a Kalshi ticker alone, and not
-// by a GoalServe webhook alone. Both sides must match.
+// GameContexts are eagerly created at startup from Kalshi markets matched
+// against GoalServe pregame odds. The EID is initially empty and gets
+// bound when the first live event arrives and is matched by team name.
 //
 // All state mutations are serialized through an inbox channel — one
 // goroutine drains it, so no mutexes are needed on any field.
@@ -39,7 +49,11 @@ type Fill struct {
 type GameContext struct {
 	Sport  events.Sport
 	League string
-	EID    string
+	EID    string // GoalServe EID, empty until first live event binds it
+
+	// Canonical team names (normalized) from the pregame HTTP source of truth.
+	HomeTeamNorm string
+	AwayTeamNorm string
 
 	// Sport-specific state (scores, period, model output, tickers, bet365 odds).
 	Game GameState
@@ -58,6 +72,10 @@ type GameContext struct {
 	// KalshiConnected is true when the Kalshi WS feed is LIVE.
 	// When false, ticker prices are stale and should not be displayed.
 	KalshiConnected bool
+
+	// LastOverturn is set by the strategy before notifying observers of
+	// an overturn event. Nil when the current event is not an overturn.
+	LastOverturn *OverturnInfo
 
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time

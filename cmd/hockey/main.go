@@ -5,6 +5,7 @@ import (
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/goalserve_http"
 	"github.com/charleschow/hft-trading/internal/config"
+	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
 	hockeyStrat "github.com/charleschow/hft-trading/internal/core/strategy/hockey"
@@ -18,11 +19,13 @@ func main() {
 		Sport:    events.SportHockey,
 		SportKey: "hockey",
 		BuildStrategy: func(cfg *config.Config) strategy.Strategy {
-			var pregame hockeyStrat.PregameOddsProvider
-			if cfg.GoalserveAPIKey != "" {
-				pregame = goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
+			return hockeyStrat.NewStrategy()
+		},
+		BuildPregameProvider: func(cfg *config.Config) strategy.PregameProvider {
+			client := goalserve_http.NewPregameClient(cfg.GoalserveAPIKey)
+			return func() ([]odds.PregameOdds, error) {
+				return client.FetchHockeyPregame()
 			}
-			return hockeyStrat.NewStrategy(pregame)
 		},
 		BuildTrainingObserver: func(cfg *config.Config) (game.GameObserver, io.Closer, error) {
 			store, err := training.OpenHockeyStore(cfg.HockeyTrainingDBPath)

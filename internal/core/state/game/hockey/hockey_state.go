@@ -138,6 +138,22 @@ func (h *HockeyState) SetTickers(home, away, _ string) {
 	h.AwayTicker = away
 }
 
+func (h *HockeyState) SetIdentifiers(eid, league string) {
+	h.EID = eid
+	h.League = league
+}
+
+// SetPregame writes pregame odds directly. Called by the engine during
+// initialization — the pregame HTTP is the source of truth for orientation.
+func (h *HockeyState) SetPregame(home, away, _ float64, g0 float64) {
+	h.HomeStrength = home
+	h.AwayStrength = away
+	if g0 > 0 {
+		h.PregameG0 = &g0
+	}
+	h.PregameApplied = true
+}
+
 func (h *HockeyState) RecalcEdge(tickers map[string]*game.TickerData) {
 	if h.ModelHomePct == 0 && h.ModelAwayPct == 0 {
 		return

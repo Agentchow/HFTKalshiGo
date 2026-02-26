@@ -4,8 +4,21 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/charleschow/hft-trading/internal/events"
 	"golang.org/x/text/unicode/norm"
 )
+
+// AliasesForSport returns the team-name alias map for a given sport.
+func AliasesForSport(sport events.Sport) map[string]string {
+	switch sport {
+	case events.SportHockey:
+		return HockeyAliases
+	case events.SportSoccer:
+		return SoccerAliases
+	default:
+		return map[string]string{}
+	}
+}
 
 // Normalize lowercases, strips diacritics, collapses whitespace,
 // then resolves through the sport-specific alias map.

@@ -7,6 +7,11 @@
 // No odds are included in the payloads so Bet365 stays nil,
 // RecalcEdge is a no-op, and no orders are placed.
 //
+// NOTE: The webhook payloads intentionally swap home/away relative to what
+// Kalshi and the pregame HTTP API report. This exercises the swap detection
+// in applyPregame() — the pregame odds must still land on the correct team
+// despite the live feed having the opposite orientation.
+//
 // Each run uses a unique EID (timestamp-based) so the engine creates a fresh
 // GameContext.
 //
@@ -408,7 +413,7 @@ func runSoccerGame(eid, homeTeam, awayTeam, league string, frames []frame) {
 	for i, f := range frames {
 		ev := map[string]any{
 			"info": map[string]any{
-				"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+				"name":         fmt.Sprintf("%s vs %s", awayTeam, homeTeam),
 				"period":       f.period,
 				"status":       f.period,
 				"minute":       f.minute,
@@ -417,8 +422,8 @@ func runSoccerGame(eid, homeTeam, awayTeam, league string, frames []frame) {
 				"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-30*time.Minute).Unix()),
 			},
 			"team_info": map[string]any{
-				"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
-				"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+				"home": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+				"away": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
 			},
 			"stats": map[string]any{
 				"redcards_home": f.redH,
@@ -441,7 +446,7 @@ func runHockeyGame(eid, homeTeam, awayTeam, league string, frames []hockeyFrame)
 	for i, f := range frames {
 		ev := map[string]any{
 			"info": map[string]any{
-				"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+				"name":         fmt.Sprintf("%s vs %s", awayTeam, homeTeam),
 				"period":       f.period,
 				"status":       f.period,
 				"seconds":      f.seconds,
@@ -450,8 +455,8 @@ func runHockeyGame(eid, homeTeam, awayTeam, league string, frames []hockeyFrame)
 				"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-90*time.Minute).Unix()),
 			},
 			"team_info": map[string]any{
-				"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
-				"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+				"home": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+				"away": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
 			},
 			"sts": f.sts,
 		}
@@ -563,7 +568,7 @@ func runSoccerOverturnGame(eid, homeTeam, awayTeam, league string) {
 func sendSoccerFrame(eid, homeTeam, awayTeam, league string, f frame, step, total int) {
 	ev := map[string]any{
 		"info": map[string]any{
-			"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+			"name":         fmt.Sprintf("%s vs %s", awayTeam, homeTeam),
 			"period":       f.period,
 			"status":       f.period,
 			"minute":       f.minute,
@@ -572,8 +577,8 @@ func sendSoccerFrame(eid, homeTeam, awayTeam, league string, f frame, step, tota
 			"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-30*time.Minute).Unix()),
 		},
 		"team_info": map[string]any{
-			"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
-			"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"home": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"away": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
 		},
 		"stats": map[string]any{
 			"redcards_home": f.redH,
@@ -593,7 +598,7 @@ func sendSoccerFrame(eid, homeTeam, awayTeam, league string, f frame, step, tota
 func sendHockeyFrame(eid, homeTeam, awayTeam, league string, f hockeyFrame, step, total int) {
 	ev := map[string]any{
 		"info": map[string]any{
-			"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+			"name":         fmt.Sprintf("%s vs %s", awayTeam, homeTeam),
 			"period":       f.period,
 			"status":       f.period,
 			"seconds":      f.seconds,
@@ -602,8 +607,8 @@ func sendHockeyFrame(eid, homeTeam, awayTeam, league string, f hockeyFrame, step
 			"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-90*time.Minute).Unix()),
 		},
 		"team_info": map[string]any{
-			"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
-			"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"home": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"away": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
 		},
 		"sts": f.sts,
 	}
@@ -671,7 +676,7 @@ func runFootballOverturnGame(eid, homeTeam, awayTeam, league string) {
 func sendFootballFrame(eid, homeTeam, awayTeam, league string, f footballFrame, step, total int) {
 	ev := map[string]any{
 		"info": map[string]any{
-			"name":         fmt.Sprintf("%s vs %s", homeTeam, awayTeam),
+			"name":         fmt.Sprintf("%s vs %s", awayTeam, homeTeam),
 			"period":       f.period,
 			"status":       f.period,
 			"seconds":      f.seconds,
@@ -680,8 +685,8 @@ func sendFootballFrame(eid, homeTeam, awayTeam, league string, f footballFrame, 
 			"start_ts_utc": fmt.Sprintf("%d", time.Now().Add(-60*time.Minute).Unix()),
 		},
 		"team_info": map[string]any{
-			"home": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
-			"away": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"home": map[string]string{"name": awayTeam, "score": fmt.Sprintf("%d", f.away)},
+			"away": map[string]string{"name": homeTeam, "score": fmt.Sprintf("%d", f.home)},
 		},
 	}
 

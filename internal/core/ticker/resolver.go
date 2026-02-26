@@ -311,8 +311,8 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 			if t1 == "" || t2 == "" {
 				continue
 			}
-			if (fuzzyContains(t1, homeNorm) && fuzzyContains(t2, awayNorm)) ||
-				(fuzzyContains(t1, awayNorm) && fuzzyContains(t2, homeNorm)) {
+			if (FuzzyContains(t1, homeNorm) && FuzzyContains(t2, awayNorm)) ||
+				(FuzzyContains(t1, awayNorm) && FuzzyContains(t2, homeNorm)) {
 				matched = true
 				break
 			}
@@ -360,9 +360,9 @@ func (r *Resolver) resolveHockey(markets []kalshi_http.Market, homeNorm, awayNor
 	}
 	for _, m := range best.teamMarkets {
 		yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
-		if fuzzyContains(yesTeam, homeNorm) {
+		if FuzzyContains(yesTeam, homeNorm) {
 			result.HomeTicker = m.Ticker
-		} else if fuzzyContains(yesTeam, awayNorm) {
+		} else if FuzzyContains(yesTeam, awayNorm) {
 			result.AwayTicker = m.Ticker
 		}
 		result.Prices[m.Ticker] = TickerSnapshot{YesAsk: m.EffectiveYesAsk(), YesBid: m.EffectiveYesBid(), NoAsk: m.EffectiveNoAsk(), NoBid: m.EffectiveNoBid(), Volume: m.Volume}
@@ -419,15 +419,15 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 			continue
 		}
 
-		matchesPair := (fuzzyContains(names[0], homeNorm) && fuzzyContains(names[1], awayNorm)) ||
-			(fuzzyContains(names[0], awayNorm) && fuzzyContains(names[1], homeNorm))
+		matchesPair := (FuzzyContains(names[0], homeNorm) && FuzzyContains(names[1], awayNorm)) ||
+			(FuzzyContains(names[0], awayNorm) && FuzzyContains(names[1], homeNorm))
 
 		if !matchesPair {
 			for _, m := range group {
 				t1, t2 := teamNamesFromTitle(m.Title, aliases)
 				if t1 != "" && t2 != "" {
-					matchesPair = (fuzzyContains(t1, homeNorm) && fuzzyContains(t2, awayNorm)) ||
-						(fuzzyContains(t1, awayNorm) && fuzzyContains(t2, homeNorm))
+					matchesPair = (FuzzyContains(t1, homeNorm) && FuzzyContains(t2, awayNorm)) ||
+						(FuzzyContains(t1, awayNorm) && FuzzyContains(t2, homeNorm))
 					if matchesPair {
 						break
 					}
@@ -482,7 +482,7 @@ func (r *Resolver) resolveSoccer(markets []kalshi_http.Market, homeNorm, awayNor
 	}
 	for _, m := range best.teamMarkets {
 		yesTeam := normalizeYesSubTitle(m.YesSubTitle, aliases)
-		if fuzzyContains(yesTeam, homeNorm) {
+		if FuzzyContains(yesTeam, homeNorm) {
 			result.HomeTicker = m.Ticker
 		} else {
 			result.AwayTicker = m.Ticker
@@ -569,7 +569,9 @@ func hasYouthTag(name string) bool {
 	return false
 }
 
-func fuzzyContains(a, b string) bool {
+// FuzzyContains returns true if either normalized name contains the other,
+// with a guard against mismatching youth/reserve tags.
+func FuzzyContains(a, b string) bool {
 	if a == "" || b == "" {
 		return false
 	}

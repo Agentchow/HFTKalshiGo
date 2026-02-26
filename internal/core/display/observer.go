@@ -33,9 +33,19 @@ func NewObserver(lookup func(events.Sport) (Displayer, bool)) *DisplayObserver {
 	}
 }
 
+func isOverturnEvent(eventType string) bool {
+	return eventType == string(events.StatusOverturnPending) ||
+		eventType == string(events.StatusOverturnConfirmed) ||
+		eventType == string(events.StatusOverturnRejected)
+}
+
 func (d *DisplayObserver) OnGameEvent(gc *game.GameContext, eventType string) {
 	disp, ok := d.lookup(gc.Sport)
 	if !ok {
+		return
+	}
+
+	if isOverturnEvent(eventType) {
 		return
 	}
 

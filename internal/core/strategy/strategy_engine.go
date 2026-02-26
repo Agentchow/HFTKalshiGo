@@ -3,11 +3,11 @@ package strategy
 import (
 	"context"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/core/display"
+	"github.com/charleschow/hft-trading/internal/core/odds"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
@@ -22,6 +22,18 @@ type TickerSubscriber interface {
 	SubscribeTickers(tickers []string) error
 }
 
+// PregameProvider fetches pregame odds for a sport. Implementations
+// wrap goalserve_http.PregameClient.FetchSoccerPregame / FetchHockeyPregame.
+type PregameProvider func() ([]odds.PregameOdds, error)
+
+const (
+	refreshInterval      = 10 * time.Minute
+	initMaxAttempts      = 5
+	initRetryBase        = 10 * time.Second
+	refreshBackoffBase   = 10 * time.Second
+	refreshBackoffMax    = 5 * time.Minute
+)
+
 // Engine subscribes to GameUpdateEvent, MarketEvent, and WSStatusEvent.
 // It routes each event to the correct GameContext's goroutine via Send().
 // Strategy evaluation and order intent publishing happen on the game's
@@ -35,8 +47,7 @@ type Engine struct {
 	subscriber TickerSubscriber
 	observers  []game.GameObserver
 
-	kalshiWSUp  atomic.Bool
-	skippedEIDs sync.Map
+	kalshiWSUp atomic.Bool
 }
 
 func NewEngine(bus *events.Bus, gameStore *store.GameStateStore, registry *Registry, resolver *ticker.Resolver, subscriber TickerSubscriber, observers []game.GameObserver) *Engine {
@@ -64,13 +75,37 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		return nil
 	}
 
+	// Fast path: EID already bound from a previous event.
 	gc, exists := e.store.Get(gu.Sport, gu.EID)
+
+	// Slow path: first event for this game — match by team name.
 	if !exists {
-		if _, tried := e.skippedEIDs.LoadOrStore(gu.EID, struct{}{}); tried {
-			return nil
+		aliases := ticker.AliasesForSport(gu.Sport)
+		homeNorm := ticker.Normalize(gu.HomeTeam, aliases)
+		awayNorm := ticker.Normalize(gu.AwayTeam, aliases)
+
+		result := e.store.GetByTeams(gu.Sport, homeNorm, awayNorm)
+		if result == nil {
+			result = e.fuzzyTeamLookup(gu.Sport, homeNorm, awayNorm)
 		}
-		go e.resolveAndCreate(gu, evt)
-		return nil
+		if result == nil {
+			return nil // not a game we trade
+		}
+
+		gc = result.GC
+		gc.League = gu.League
+		e.store.BindEID(gc, gu.EID)
+		gc.Send(func() {
+			if id, ok := gc.Game.(interface{ SetIdentifiers(string, string) }); ok {
+				id.SetIdentifiers(gu.EID, gu.League)
+			}
+		})
+		telemetry.Infof("engine: bound EID %s to %s vs %s (swapped=%v)",
+			gu.EID, gc.HomeTeamNorm, gc.AwayTeamNorm, result.Swapped)
+	}
+
+	if e.needsSwap(gc, &gu) {
+		swapEventFields(&gu)
 	}
 
 	gc.Send(func() {
@@ -155,11 +190,52 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 	return nil
 }
 
+// swapEventFields flips all positional fields in a GameUpdateEvent so the
+// strategy always sees data in the canonical (pregame) orientation.
+func swapEventFields(gu *events.GameUpdateEvent) {
+	gu.HomeTeam, gu.AwayTeam = gu.AwayTeam, gu.HomeTeam
+	gu.HomeScore, gu.AwayScore = gu.AwayScore, gu.HomeScore
+	gu.HomeStrength, gu.AwayStrength = gu.AwayStrength, gu.HomeStrength
+	gu.HomeRedCards, gu.AwayRedCards = gu.AwayRedCards, gu.HomeRedCards
+	gu.HomePenaltyCount, gu.AwayPenaltyCount = gu.AwayPenaltyCount, gu.HomePenaltyCount
+}
+
+// needsSwap determines per-event whether the live feed's home/away orientation
+// is reversed relative to canonical (pregame) orientation. Tries exact match
+// first, then falls back to fuzzy substring matching.
+func (e *Engine) needsSwap(gc *game.GameContext, gu *events.GameUpdateEvent) bool {
+	aliases := ticker.AliasesForSport(gu.Sport)
+	eventHomeNorm := ticker.Normalize(gu.HomeTeam, aliases)
+	if eventHomeNorm == gc.HomeTeamNorm {
+		return false
+	}
+	if eventHomeNorm == gc.AwayTeamNorm {
+		return true
+	}
+	return ticker.FuzzyContains(gc.AwayTeamNorm, eventHomeNorm)
+}
+
+// fuzzyTeamLookup is the fallback when exact normalized names don't match.
+// It iterates all GameContexts for the sport and tries fuzzy substring matching.
+func (e *Engine) fuzzyTeamLookup(sport events.Sport, homeNorm, awayNorm string) *store.TeamLookupResult {
+	for _, gc := range e.store.BySport(sport) {
+		if gc.HomeTeamNorm == "" {
+			continue
+		}
+		sameOrder := ticker.FuzzyContains(gc.HomeTeamNorm, homeNorm) && ticker.FuzzyContains(gc.AwayTeamNorm, awayNorm)
+		swapped := ticker.FuzzyContains(gc.HomeTeamNorm, awayNorm) && ticker.FuzzyContains(gc.AwayTeamNorm, homeNorm)
+		if sameOrder || swapped {
+			return &store.TeamLookupResult{GC: gc, Swapped: swapped && !sameOrder}
+		}
+	}
+	return nil
+}
+
 func isFinished(period string) bool {
 	low := strings.ToLower(strings.TrimSpace(period))
 	for _, tok := range []string{
 		"finished", "final", "ended", "ft",
-		"after over time", "after OVERTIME", "after ot",
+		"after over time", "after overtime", "after ot",
 		"after extra time", "aet",
 		"after penalties", "after pen",
 	} {
@@ -269,29 +345,78 @@ func (e *Engine) onWSStatus(evt events.Event) error {
 	return nil
 }
 
-// resolveAndCreate fuzzy-matches a GoalServe game against the Kalshi
-// market cache. A GameContext is only created when both sides match —
-// not by a Kalshi ticker alone, not by a GoalServe webhook alone.
-// On failure, the EID stays in skippedEIDs so future webhooks skip instantly.
-func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
-	if e.resolver == nil {
+// InitializeGames eagerly creates GameContexts by matching GoalServe
+// pregame entries against Kalshi markets. This blocks until complete;
+// the fanout connection should not be established until this returns.
+func (e *Engine) InitializeGames(ctx context.Context, sport events.Sport, provider PregameProvider) {
+	if err := e.resolver.RefreshMarkets(ctx, sport); err != nil {
+		telemetry.Errorf("engine: failed to refresh Kalshi markets: %v", err)
+	}
+
+	pregame := e.fetchPregameWithRetry(provider)
+	if pregame == nil {
+		telemetry.Errorf("engine: all pregame fetch attempts failed — no games initialized")
 		return
 	}
 
-	gameStart := evt.Timestamp
-	if gu.GameStartUTC > 0 {
-		gameStart = time.Unix(gu.GameStartUTC, 0)
+	created := 0
+	aliases := ticker.AliasesForSport(sport)
+	for _, p := range pregame {
+		if e.initializeGame(ctx, sport, p, aliases) {
+			created++
+		}
 	}
 
-	resolved := e.resolver.Resolve(context.Background(), gu.Sport, gu.HomeTeam, gu.AwayTeam, gameStart)
+	telemetry.Infof("engine: initialized %d games for %s (from %d pregame entries)", created, sport, len(pregame))
+
+	go e.startPeriodicRefresh(ctx, sport, provider)
+}
+
+// fetchPregameWithRetry attempts to fetch pregame odds with exponential backoff.
+func (e *Engine) fetchPregameWithRetry(provider PregameProvider) []odds.PregameOdds {
+	delay := initRetryBase
+	for attempt := 1; attempt <= initMaxAttempts; attempt++ {
+		fetched, err := provider()
+		if err != nil {
+			telemetry.Warnf("pregame: startup fetch attempt %d/%d failed: %v", attempt, initMaxAttempts, err)
+			if attempt < initMaxAttempts {
+				time.Sleep(delay)
+				delay *= 2
+			}
+			continue
+		}
+		telemetry.Infof("pregame: loaded %d matches on startup", len(fetched))
+		return fetched
+	}
+	return nil
+}
+
+// initializeGame matches one pregame entry against Kalshi markets and creates
+// a GameContext if a match is found. Returns true if a game was created.
+func (e *Engine) initializeGame(ctx context.Context, sport events.Sport, p odds.PregameOdds, aliases map[string]string) bool {
+	homeNorm := ticker.Normalize(p.HomeTeam, aliases)
+	awayNorm := ticker.Normalize(p.AwayTeam, aliases)
+	if homeNorm == "" || awayNorm == "" {
+		return false
+	}
+
+	// Skip if we already have a GameContext for this team pair.
+	if existing := e.store.GetByTeams(sport, homeNorm, awayNorm); existing != nil {
+		return false
+	}
+
+	resolved := e.resolver.Resolve(ctx, sport, p.HomeTeam, p.AwayTeam, time.Now())
 	if resolved == nil {
-		telemetry.Debugf("ticker: no match for %s %s vs %s", gu.Sport, gu.HomeTeam, gu.AwayTeam)
-		return
+		return false
 	}
 
-	gs := e.registry.CreateGameState(gu.Sport, gu.EID, gu.League, gu.HomeTeam, gu.AwayTeam)
-	gc := game.NewGameContext(gu.Sport, gu.League, gu.EID, gs)
-	gc.GameStartedAt = gameStart
+	// Pregame is the source of truth for orientation — no swap detection needed.
+	gs := e.registry.CreateGameState(sport, "", "", p.HomeTeam, p.AwayTeam)
+	gc := game.NewGameContext(sport, "", "", gs)
+	gc.HomeTeamNorm = homeNorm
+	gc.AwayTeamNorm = awayNorm
+
+	e.applyPregameToState(gc, sport, p)
 
 	for _, o := range e.observers {
 		gc.AddObserver(o)
@@ -300,13 +425,8 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 	allTickers := resolved.AllTickers()
 	if e.subscriber != nil {
 		if err := e.subscriber.SubscribeTickers(allTickers); err != nil {
-			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", gu.HomeTeam, gu.AwayTeam, err)
+			telemetry.Warnf("ticker: WS subscribe failed for %s vs %s: %v", p.HomeTeam, p.AwayTeam, err)
 		}
-	}
-
-	initialStatus := gu.MatchStatus
-	if initialStatus == "" {
-		initialStatus = "LIVE"
 	}
 
 	gc.Send(func() {
@@ -326,19 +446,68 @@ func (e *Engine) resolveAndCreate(gu events.GameUpdateEvent, evt events.Event) {
 			gc.Tickers[t] = td
 			e.store.RegisterTicker(t, gc)
 		}
-
-		ds := e.display.Get(gc.EID)
-		if initialStatus == "GAME START" {
-			ds.GameStarted = true
-		}
-		if gc.Game.HasPregame() {
-			gc.Game.RecalcEdge(gc.Tickers)
-			gc.SetMatchStatus(initialStatus)
-		}
 	})
 
 	e.store.Put(gc)
 	telemetry.Metrics.ActiveGames.Inc()
+	telemetry.Infof("engine: created game %s vs %s", p.HomeTeam, p.AwayTeam)
+	return true
+}
+
+// applyPregameToState writes pregame odds directly onto the sport-specific
+// GameState. Since the pregame HTTP is the source of truth for orientation,
+// HomePregameStrength always maps to our canonical home — no swap needed.
+func (e *Engine) applyPregameToState(gc *game.GameContext, sport events.Sport, p odds.PregameOdds) {
+	gc.Send(func() {
+		gs := gc.Game
+		type pregameSetter interface {
+			SetPregame(home, away, draw, g0 float64)
+		}
+		if ps, ok := gs.(pregameSetter); ok {
+			ps.SetPregame(p.HomePregameStrength, p.AwayPregameStrength, p.DrawPct, p.G0)
+		}
+	})
+}
+
+// startPeriodicRefresh re-fetches Kalshi markets and GoalServe pregame odds
+// every refreshInterval, creating GameContexts for any new matches.
+func (e *Engine) startPeriodicRefresh(ctx context.Context, sport events.Sport, provider PregameProvider) {
+	t := time.NewTicker(refreshInterval)
+	defer t.Stop()
+
+	backoff := refreshBackoffBase
+	aliases := ticker.AliasesForSport(sport)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+
+		if err := e.resolver.RefreshMarkets(ctx, sport); err != nil {
+			telemetry.Warnf("refresh: Kalshi markets fetch failed: %v", err)
+		}
+
+		pregame, err := provider()
+		if err != nil {
+			telemetry.Warnf("refresh: pregame fetch failed (backoff %v): %v", backoff, err)
+			time.Sleep(backoff)
+			backoff = min(backoff*2, refreshBackoffMax)
+			continue
+		}
+		backoff = refreshBackoffBase
+
+		created := 0
+		for _, p := range pregame {
+			if e.initializeGame(ctx, sport, p, aliases) {
+				created++
+			}
+		}
+		if created > 0 {
+			telemetry.Infof("refresh: created %d new games for %s", created, sport)
+		}
+	}
 }
 
 func (e *Engine) publishIntents(intents []events.OrderIntent, sport events.Sport, league, gameID string, ts time.Time) {

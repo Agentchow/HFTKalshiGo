@@ -12,6 +12,10 @@ const (
 	StatusPowerPlayEnd MatchStatus = "POWER PLAY END"
 	StatusOvertime     MatchStatus = "OVERTIME"
 	StatusGameFinish   MatchStatus = "GAME FINISH"
+
+	StatusOverturnPending   MatchStatus = "OVERTURN PENDING"
+	StatusOverturnConfirmed MatchStatus = "OVERTURN CONFIRMED"
+	StatusOverturnRejected  MatchStatus = "OVERTURN REJECTED"
 )
 
 // GameUpdateEvent is published on every GoalServe Webhook/WS or GeniusSports Websocket for a game.

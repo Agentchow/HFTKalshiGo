@@ -16,6 +16,10 @@ type scoreDropRecord struct {
 type ScoreDropTracker struct {
 	scoreDropPending bool
 	scoreDropData    *scoreDropRecord
+
+	// Set on "rejected" before clearing, so callers can read what was rejected.
+	RejectedHome int
+	RejectedAway int
 }
 
 // CheckDrop is the core score-drop algorithm.
@@ -27,6 +31,10 @@ func (t *ScoreDropTracker) CheckDrop(curHome, curAway, newHome, newAway, confirm
 
 	if newTotal >= prevTotal {
 		if t.scoreDropPending {
+			if t.scoreDropData != nil {
+				t.RejectedHome = t.scoreDropData.homeScore
+				t.RejectedAway = t.scoreDropData.awayScore
+			}
 			t.ClearScoreDropPending()
 			return "rejected"
 		}

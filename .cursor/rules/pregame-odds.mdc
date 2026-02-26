@@ -1,0 +1,49 @@
+---
+description: Pregame odds architecture and home/away orientation
+alwaysApply: true
+---
+
+# Pregame Odds & Home/Away Orientation
+
+## Architecture: Instrument-First
+
+GameContexts are **eagerly created at startup**, not lazily from live events.
+
+### Startup flow
+
+1. Engine calls `resolver.RefreshMarkets()` to fetch all Kalshi markets
+2. Engine calls the `PregameProvider` to fetch GoalServe pregame odds (with exponential backoff retry)
+3. For each pregame entry, resolves against Kalshi markets by team name
+4. On match: creates a GameContext with pregame odds applied, tickers registered, but **no EID yet**
+5. Fanout connection is established only after initialization completes — no live events arrive during init
+
+### Runtime flow
+
+1. Live event arrives with `EID=X, Home=TeamA, Away=TeamB`
+2. Engine tries EID lookup (fast path for already-bound games)
+3. If no EID match, tries team-name lookup (exact normalized match, then fuzzy fallback)
+4. On match: binds the EID for O(1) future lookups, determines `LiveSwapped` flag
+5. If `LiveSwapped` is true, all positional fields in the event are flipped before the strategy sees them
+6. If no match at all: silently ignored (not a game we trade)
+
+### Periodic refresh (every ~10 min)
+
+Both Kalshi markets and GoalServe pregame are re-fetched. New matches result in new GameContexts. GoalServe HTTP failures use exponential backoff (10s base, 5 min cap).
+
+## Source of Truth for Orientation
+
+The **GoalServe pregame HTTP API** (`localteam`/`visitorteam`) is the canonical orientation. The live feed may disagree — that's handled by the `LiveSwapped` flag on GameContext, which flips all positional fields at the routing layer.
+
+## Key Fields
+
+- `HomeStrength`/`AwayStrength` on `SoccerState`/`HockeyState`: pregame odds from GoalServe HTTP (set at initialization)
+- `Bet365HomePct`/`Bet365AwayPct`: live in-play odds from GoalServe webhook/WS (set during Evaluate)
+- These are separate fields and never overwrite each other
+
+## Mock Testing
+
+The `goalserve_mock` (`cmd/goalserve_mock/main.go`) intentionally swaps home/away in its webhook payloads. This exercises the `LiveSwapped` flag — scores and odds from the mock arrive with reversed orientation, get flipped at the routing layer, and the strategy sees canonical orientation.
+
+## No Swap Detection in Strategies
+
+The old `applyPregame()` with swap detection has been removed. Pregame odds are applied once at initialization with the correct orientation. The `LiveSwapped` field handles any orientation mismatch between live feeds and pregame at the engine routing layer — strategies never need to think about it.

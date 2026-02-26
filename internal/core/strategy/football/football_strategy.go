@@ -32,6 +32,11 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		case "new_drop":
 			telemetry.Infof("[OVERTURN-PENDING] %s vs %s (%d-%d -> %d-%d)",
 				gu.HomeTeam, gu.AwayTeam, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
+			gc.LastOverturn = &game.OverturnInfo{
+				OldHome: fs.GetHomeScore(), OldAway: fs.GetAwayScore(),
+				NewHome: gu.HomeScore, NewAway: gu.AwayScore,
+			}
+			gc.Notify(string(events.StatusOverturnPending))
 			s.lastPendingLog = time.Now()
 			return strategy.EvalResult{}
 		case "pending":
@@ -44,9 +49,19 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		case "rejected":
 			telemetry.Infof("[OVERTURN-REJECTED] %s vs %s (score restored to %d-%d)",
 				gu.HomeTeam, gu.AwayTeam, gu.HomeScore, gu.AwayScore)
+			gc.LastOverturn = &game.OverturnInfo{
+				OldHome: fs.GetHomeScore(), OldAway: fs.GetAwayScore(),
+				NewHome: fs.RejectedHome, NewAway: fs.RejectedAway,
+			}
+			gc.Notify(string(events.StatusOverturnRejected))
 		case "confirmed":
 			telemetry.Infof("[OVERTURN-CONFIRMED] %s vs %s (%d-%d -> %d-%d)",
 				gu.HomeTeam, gu.AwayTeam, fs.GetHomeScore(), fs.GetAwayScore(), gu.HomeScore, gu.AwayScore)
+			gc.LastOverturn = &game.OverturnInfo{
+				OldHome: fs.GetHomeScore(), OldAway: fs.GetAwayScore(),
+				NewHome: gu.HomeScore, NewAway: gu.AwayScore,
+			}
+			gc.Notify(string(events.StatusOverturnConfirmed))
 		}
 	}
 

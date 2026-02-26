@@ -14,6 +14,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/config"
 	"github.com/charleschow/hft-trading/internal/core/display"
 	"github.com/charleschow/hft-trading/internal/core/execution"
+	"github.com/charleschow/hft-trading/internal/core/overturn"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
@@ -31,6 +32,10 @@ type SportProcessConfig struct {
 
 	// BuildStrategy returns the sport-specific strategy implementation.
 	BuildStrategy func(cfg *config.Config) strategy.Strategy
+
+	// BuildPregameProvider returns a function that fetches pregame odds.
+	// The engine calls this at startup and on periodic refresh.
+	BuildPregameProvider func(cfg *config.Config) strategy.PregameProvider
 
 	// BuildTrainingObserver optionally creates a training observer.
 	// The returned io.Closer (if non-nil) is closed on shutdown.
@@ -102,10 +107,29 @@ func Run(spc SportProcessConfig) {
 		defer trainingCloser.Close()
 	}
 
-	// ── Engine ─────────────────────────────────────────────────
-	_ = strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS, observers)
+	// ── Overturn observer ─────────────────────────────────────
+	otStore, err := overturn.OpenStore(cfg.OverturnDBPath)
+	if err != nil {
+		telemetry.Errorf("%s overturn store: %v", label, err)
+		os.Exit(1)
+	}
+	defer otStore.Close()
+	observers = append(observers, overturn.NewObserver(otStore))
 
-	telemetry.Infof("Listening for %s games via fanout (%s) (GoalServe will take ~10 sec)...", spc.SportKey, cfg.FanoutAddr)
+	// ── Engine ─────────────────────────────────────────────────
+	engine := strategy.NewEngine(bus, gameStore, registry, tickerResolver, kalshiWS, observers)
+
+	// ── Context ──────────────────────────────────────────────
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// ── Initialize games (blocks until complete) ─────────────
+	if spc.BuildPregameProvider != nil {
+		provider := spc.BuildPregameProvider(cfg)
+		engine.InitializeGames(ctx, spc.Sport, provider)
+	} else {
+		telemetry.Warnf("No pregame provider configured for %s — no games will be initialized", spc.SportKey)
+	}
 
 	// ── Execution ──────────────────────────────────────────────
 	riskLimits, err := config.LoadRiskLimits(cfg.RiskLimitsPath)
@@ -118,9 +142,8 @@ func Run(spc SportProcessConfig) {
 	execution.RegisterLanesFromConfig(laneRouter, riskLimits, spc.Sport, spc.SportKey)
 	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
 
-	// ── Fanout client & Kalshi WS ─────────────────────────────
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// ── Fanout client & Kalshi WS (after init completes) ─────
+	telemetry.Infof("Connecting to fanout for %s games (%s)...", spc.SportKey, cfg.FanoutAddr)
 
 	fanoutClient := fanout.NewClient(cfg.FanoutAddr, spc.Sport, bus)
 	go fanoutClient.ConnectWithRetry(ctx)

@@ -157,6 +157,18 @@ func (s *Strategy) updatePowerPlay(gc *game.GameContext, hs *hockeyState.HockeyS
 	hs.AwayPenaltyCount = gu.AwayPenaltyCount
 
 	if homeOn != hs.IsHomePowerPlay || awayOn != hs.IsAwayPowerPlay {
+		if !homeOn && !awayOn {
+			// PP just ended — capture who had it before clearing
+			if hs.IsHomePowerPlay {
+				t := true
+				hs.LastPowerPlayWasHome = &t
+			} else if hs.IsAwayPowerPlay {
+				t := false
+				hs.LastPowerPlayWasHome = &t
+			}
+		} else {
+			hs.LastPowerPlayWasHome = nil
+		}
 		hs.IsHomePowerPlay = homeOn
 		hs.IsAwayPowerPlay = awayOn
 		if homeOn || awayOn {

@@ -41,6 +41,10 @@ type HockeyState struct {
 	HomePenaltyCount int // cumulative, from STS Penalties= field
 	AwayPenaltyCount int
 
+	// LastPowerPlayWasHome is set when a PP ends (before clearing flags) so the
+	// display can show who had the PP. Cleared when the next PP starts.
+	LastPowerPlayWasHome *bool
+
 	PregameApplied bool
 	PregameG0      *float64 // expected total goals from O/U market, nil if unavailable
 

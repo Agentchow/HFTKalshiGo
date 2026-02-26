@@ -140,6 +140,8 @@ func mapPeriod(sport events.Sport, pc int) string {
 			return "Extra Time 2nd Half"
 		case 6:
 			return "Penalties"
+		case 7:
+			return "Break"
 		case 255:
 			return "Finished"
 		default:

@@ -201,8 +201,12 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			priceDollars = reqs[i].NoPriceDollars
 		}
 		cents := dollarsToCents(priceDollars)
-		fmt.Fprintf(&ob, "%s[ORDER] %-*s  %-3s  1 contracts @ %d¢\n",
-			prefix, nameWidth, teamFor(intent.Outcome),
+		label := "[ORDER]"
+		if intent.Slam {
+			label = "[SLAM]"
+		}
+		fmt.Fprintf(&ob, "%s%s %-*s  %-3s  1 contracts @ %d¢\n",
+			prefix, label, nameWidth, teamFor(intent.Outcome),
 			strings.ToUpper(intent.Side), cents)
 	}
 	fmt.Fprint(os.Stderr, ob.String())

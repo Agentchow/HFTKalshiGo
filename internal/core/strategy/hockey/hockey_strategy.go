@@ -31,8 +31,6 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		return strategy.EvalResult{}
 	}
 
-	s.updatePowerPlay(gc, hs, gu)
-
 	overturn := false
 	if hs.HasLIVEData() {
 		result := hs.CheckScoreDrop(gu.HomeScore, gu.AwayScore, 15)
@@ -75,6 +73,7 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	}
 
 	changed := hs.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
+	s.updatePowerPlay(gc, hs, gu)
 	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}

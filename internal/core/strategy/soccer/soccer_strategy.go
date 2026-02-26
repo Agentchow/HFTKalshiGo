@@ -30,16 +30,6 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		return strategy.EvalResult{}
 	}
 
-	prevHomeRC, prevAwayRC := ss.HomeRedCards, ss.AwayRedCards
-
-	if gu.HomeRedCards > 0 || gu.AwayRedCards > 0 {
-		ss.UpdateRedCards(gu.HomeRedCards, gu.AwayRedCards)
-	}
-	rcChanged := ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC
-	if rcChanged {
-		gc.Notify(string(events.StatusRedCard))
-	}
-
 	tracked := len(gc.Tickers) > 0
 
 	if ss.HasLIVEData() {
@@ -90,6 +80,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	}
 
 	changed := ss.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
+	prevHomeRC, prevAwayRC := ss.HomeRedCards, ss.AwayRedCards
+	if gu.HomeRedCards > 0 || gu.AwayRedCards > 0 {
+		ss.UpdateRedCards(gu.HomeRedCards, gu.AwayRedCards)
+	}
+	rcChanged := ss.HomeRedCards != prevHomeRC || ss.AwayRedCards != prevAwayRC
+	if rcChanged {
+		gc.Notify(string(events.StatusRedCard))
+	}
 	if !changed {
 		return strategy.EvalResult{}
 	}

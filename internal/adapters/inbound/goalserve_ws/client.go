@@ -86,6 +86,21 @@ func (c *Client) ConnectWithRetry(ctx context.Context) {
 	}
 }
 
+// isAuthRejection returns true if the error indicates the server rejected the
+// connection due to auth (401/403, bad handshake). Network errors (connection
+// reset, timeout, refused) return false so we retry with the cached token.
+func isAuthRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "bad handshake") ||
+		strings.Contains(s, "401") ||
+		strings.Contains(s, "403") ||
+		strings.Contains(s, "unauthorized") ||
+		strings.Contains(s, "forbidden")
+}
+
 func (c *Client) connect(ctx context.Context) error {
 	token, err := c.tokenProvider.Token(ctx)
 	if err != nil {
@@ -95,7 +110,11 @@ func (c *Client) connect(ctx context.Context) error {
 	url := fmt.Sprintf("%s/%s?tkn=%s", c.wsBaseURL, c.sport, token)
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
 	if err != nil {
-		c.tokenProvider.Invalidate()
+		// Only invalidate on auth rejection (401/403, bad handshake). Network
+		// errors (connection reset, timeout, refused) should retry with cached token.
+		if isAuthRejection(err) {
+			c.tokenProvider.Invalidate()
+		}
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()

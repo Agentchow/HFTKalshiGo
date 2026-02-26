@@ -11,7 +11,7 @@ import (
 )
 
 // Observer implements game.GameObserver. It listens for overturn events
-// and persists them with current Kalshi/Bet365 odds to the overturn DB.
+// and persists them with current Kalshi odds to the overturn DB.
 type Observer struct {
 	store *Store
 }
@@ -47,14 +47,9 @@ func (o *Observer) OnGameEvent(gc *game.GameContext, eventType string) {
 		row.KalshiHomeYes = tickerYesAsk(gc.Tickers, ss.HomeTicker)
 		row.KalshiAwayYes = tickerYesAsk(gc.Tickers, ss.AwayTicker)
 		row.KalshiDrawYes = tickerYesAsk(gc.Tickers, ss.DrawTicker)
-		row.Bet365HomePct = pctPtr(ss.Bet365HomePct)
-		row.Bet365AwayPct = pctPtr(ss.Bet365AwayPct)
-		row.Bet365DrawPct = pctPtr(ss.Bet365DrawPct)
 	case *hockeyState.HockeyState:
 		row.KalshiHomeYes = tickerYesAsk(gc.Tickers, ss.HomeTicker)
 		row.KalshiAwayYes = tickerYesAsk(gc.Tickers, ss.AwayTicker)
-		row.Bet365HomePct = pctPtr(ss.Bet365HomePct)
-		row.Bet365AwayPct = pctPtr(ss.Bet365AwayPct)
 	}
 
 	if err := o.store.Insert(row); err != nil {
@@ -80,10 +75,3 @@ func tickerYesAsk(tickers map[string]*game.TickerData, ticker string) *float64 {
 	return &v
 }
 
-func pctPtr(p *float64) *float64 {
-	if p == nil || *p <= 0 {
-		return nil
-	}
-	v := *p
-	return &v
-}

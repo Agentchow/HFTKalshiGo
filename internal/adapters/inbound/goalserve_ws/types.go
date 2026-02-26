@@ -51,8 +51,7 @@ type UpdtMessage struct {
 	SC      string                     `json:"sc"`  // state code
 	CMS     []WSComment                `json:"cms"` // play-by-play comments
 	Stat    string                     `json:"stat"`
-	Stats   map[string]json.RawMessage `json:"stats"`
-	Odds    []WSOddsMarket             `json:"odds"`
+	Stats map[string]json.RawMessage `json:"stats"`
 }
 
 type WSTeam struct {
@@ -75,16 +74,3 @@ type WSComment struct {
 	TI string `json:"ti"` // team indicator: "0"=neutral, "1"=home, "2"=away
 }
 
-type WSOddsMarket struct {
-	ID int           `json:"id"`
-	BL int           `json:"bl"`           // blocked
-	HA *float64      `json:"ha,omitempty"` // handicap value, nil = no handicap
-	O  []WSOddsEntry `json:"o"`
-}
-
-type WSOddsEntry struct {
-	Name    string  `json:"n"`
-	Value   float64 `json:"v"`
-	LastVal float64 `json:"lv,omitempty"`
-	Blocked int     `json:"b"`
-}

@@ -50,16 +50,6 @@ func ParseUpdt(msg *UpdtMessage) *events.Event {
 		gu.PowerPlay, gu.HomePenaltyCount, gu.AwayPenaltyCount = extractPowerPlay(msg)
 	}
 
-	// Only use odds from Bet365 push events (WS connection is bookmaker-specific).
-	if msg.BM == "bet365" {
-		odds := extractMoneylineOdds(sport, msg)
-		if odds != nil {
-			gu.LiveOddsHome = odds.home
-			gu.LiveOddsDraw = odds.draw
-			gu.LiveOddsAway = odds.away
-		}
-	}
-
 	gu.MatchStatus = inferMatchStatus(sport, msg, homeScore, awayScore)
 
 	// Log state codes for future mapping (log-and-learn).
@@ -332,95 +322,6 @@ func extractPowerPlay(msg *UpdtMessage) (powerPlay bool, homePen, awayPen int) {
 	}
 
 	return false, homePen, awayPen
-}
-
-type parsedOdds struct {
-	home *float64
-	draw *float64
-	away *float64
-}
-
-// extractMoneylineOdds finds the fulltime moneyline market heuristically:
-// soccer: 3-way (1/X/2) without handicap; hockey/football: 2-way (1/2) without handicap.
-func extractMoneylineOdds(sport events.Sport, msg *UpdtMessage) *parsedOdds {
-	if len(msg.Odds) == 0 {
-		return nil
-	}
-
-	wantWays := 3
-	if sport == events.SportHockey || sport == events.SportFootball {
-		wantWays = 2
-	}
-
-	for _, mkt := range msg.Odds {
-		if mkt.BL != 0 {
-			continue
-		}
-		// Skip handicap markets; accept nil or explicit 0 (no handicap).
-		if mkt.HA != nil && *mkt.HA != 0 {
-			continue
-		}
-		if len(mkt.O) != wantWays {
-			continue
-		}
-
-		allUnblocked := true
-		for _, o := range mkt.O {
-			if o.Blocked != 0 || o.Value <= 1.0 {
-				allUnblocked = false
-				break
-			}
-		}
-		if !allUnblocked {
-			continue
-		}
-
-		if wantWays == 3 {
-			// Verify it's a 1/X/2 market
-			names := map[string]float64{}
-			for _, o := range mkt.O {
-				names[o.Name] = o.Value
-			}
-			homeDec, hOK := names["1"]
-			drawDec, dOK := names["X"]
-			awayDec, aOK := names["2"]
-			if !hOK || !dOK || !aOK {
-				continue
-			}
-			h, d, a := removeVig3(homeDec, drawDec, awayDec)
-			return &parsedOdds{home: &h, draw: &d, away: &a}
-		}
-
-		// 2-way
-		names := map[string]float64{}
-		for _, o := range mkt.O {
-			names[o.Name] = o.Value
-		}
-		homeDec, hOK := names["1"]
-		awayDec, aOK := names["2"]
-		if !hOK || !aOK {
-			continue
-		}
-		h, a := removeVig2(homeDec, awayDec)
-		return &parsedOdds{home: &h, away: &a}
-	}
-
-	return nil
-}
-
-func removeVig2(a, b float64) (float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	total := rawA + rawB
-	return rawA / total, rawB / total
-}
-
-func removeVig3(a, b, c float64) (float64, float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	rawC := 1.0 / c
-	total := rawA + rawB + rawC
-	return rawA / total, rawB / total, rawC / total
 }
 
 // finishStateCodes are GoalServe state codes that indicate a finished game.

@@ -33,9 +33,6 @@ type Row struct {
 	KalshiAwayYes *float64
 	KalshiDrawYes *float64 // soccer only
 
-	Bet365HomePct *float64
-	Bet365AwayPct *float64
-	Bet365DrawPct *float64 // soccer only
 }
 
 // Store persists overturn events in a SQLite database.
@@ -75,11 +72,7 @@ func OpenStore(path string) (*Store, error) {
 
 			kalshi_home_yes REAL,
 			kalshi_away_yes REAL,
-			kalshi_draw_yes REAL,
-
-			bet365_home_pct REAL,
-			bet365_away_pct REAL,
-			bet365_draw_pct REAL
+			kalshi_draw_yes REAL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ot_game_id ON overturns(game_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ot_ts ON overturns(ts)`,
@@ -90,6 +83,11 @@ func OpenStore(path string) (*Store, error) {
 			return nil, fmt.Errorf("init schema (%s): %w", stmt, err)
 		}
 	}
+
+	// Migrations (errors ignored for idempotency).
+	db.Exec(`ALTER TABLE overturns DROP COLUMN bet365_home_pct`)
+	db.Exec(`ALTER TABLE overturns DROP COLUMN bet365_away_pct`)
+	db.Exec(`ALTER TABLE overturns DROP COLUMN bet365_draw_pct`)
 
 	var count int64
 	row := db.QueryRow(`SELECT COUNT(*) FROM overturns`)
@@ -114,9 +112,8 @@ func (s *Store) Insert(row Row) error {
 			old_home_score, old_away_score,
 			new_home_score, new_away_score,
 			period, time_remain,
-			kalshi_home_yes, kalshi_away_yes, kalshi_draw_yes,
-			bet365_home_pct, bet365_away_pct, bet365_draw_pct
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			kalshi_home_yes, kalshi_away_yes, kalshi_draw_yes
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		row.Ts.UTC().Format(time.RFC3339Nano),
 		row.Sport,
 		row.GameID,
@@ -133,9 +130,6 @@ func (s *Store) Insert(row Row) error {
 		row.KalshiHomeYes,
 		row.KalshiAwayYes,
 		row.KalshiDrawYes,
-		row.Bet365HomePct,
-		row.Bet365AwayPct,
-		row.Bet365DrawPct,
 	)
 	return err
 }

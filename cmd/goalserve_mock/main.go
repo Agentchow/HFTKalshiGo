@@ -4,8 +4,7 @@
 // On startup it queries the Kalshi API for active soccer, hockey, and football
 // markets, picks one game from each sport, and uses those team names in the
 // mock webhooks. Each sport runs on its own goroutine.
-// No odds are included in the payloads so Bet365 stays nil,
-// RecalcEdge is a no-op, and no orders are placed.
+// No live odds are included in the payloads, so no orders are placed.
 //
 // NOTE: The webhook payloads intentionally swap home/away relative to what
 // Kalshi and the pregame HTTP API report. This exercises the swap detection

@@ -72,13 +72,6 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	telemetry.Metrics.ScoreChanges.Inc()
 
-	if gu.LiveOddsHome != nil && gu.LiveOddsAway != nil {
-		h := *gu.LiveOddsHome * 100
-		a := *gu.LiveOddsAway * 100
-		fs.ModelHomePct = h
-		fs.ModelAwayPct = a
-	}
-
 	// TODO: plug in football model and edge detection
 	return strategy.EvalResult{}
 }

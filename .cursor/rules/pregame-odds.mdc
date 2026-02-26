@@ -37,8 +37,6 @@ The **GoalServe pregame HTTP API** (`localteam`/`visitorteam`) is the canonical 
 ## Key Fields
 
 - `HomeStrength`/`AwayStrength` on `SoccerState`/`HockeyState`: pregame odds from GoalServe HTTP (set at initialization)
-- `Bet365HomePct`/`Bet365AwayPct`: live in-play odds from GoalServe webhook/WS (set during Evaluate)
-- These are separate fields and never overwrite each other
 
 ## Mock Testing
 

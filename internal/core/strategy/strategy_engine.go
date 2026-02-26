@@ -197,7 +197,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 func swapEventFields(gu *events.GameUpdateEvent) {
 	gu.HomeTeam, gu.AwayTeam = gu.AwayTeam, gu.HomeTeam
 	gu.HomeScore, gu.AwayScore = gu.AwayScore, gu.HomeScore
-	gu.LiveOddsHome, gu.LiveOddsAway = gu.LiveOddsAway, gu.LiveOddsHome
 	gu.HomeRedCards, gu.AwayRedCards = gu.AwayRedCards, gu.HomeRedCards
 	gu.HomePenaltyCount, gu.AwayPenaltyCount = gu.AwayPenaltyCount, gu.HomePenaltyCount
 }

@@ -30,11 +30,6 @@ type HockeyState struct {
 	ModelHomePct float64 // 0–100
 	ModelAwayPct float64 // 0–100
 
-	// Bet365 odds cache (from GoalServe WS "bm":"bet365")
-	Bet365HomePct *float64 // 0–100
-	Bet365AwayPct *float64 // 0–100
-	Bet365Updated bool     // true when bet365 odds changed in the latest Evaluate
-
 	// Power play state. Updated from GoalServe STS field every webhook.
 	IsHomePowerPlay  bool
 	IsAwayPowerPlay  bool

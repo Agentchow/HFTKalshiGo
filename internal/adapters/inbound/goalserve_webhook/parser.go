@@ -24,12 +24,11 @@ type WebhookPayload struct {
 
 // WebhookEvent is a single game within the webhook payload.
 type WebhookEvent struct {
-	Info     EventInfo             `json:"info"`
-	TeamInfo TeamInfo              `json:"team_info"`
-	Odds     map[string]OddsMarket `json:"odds"`
-	Core     map[string]string     `json:"core"`
-	Stats    map[string]any        `json:"stats"`
-	STS      string                `json:"sts"`
+	Info     EventInfo         `json:"info"`
+	TeamInfo TeamInfo          `json:"team_info"`
+	Core     map[string]string `json:"core"`
+	Stats    map[string]any    `json:"stats"`
+	STS      string            `json:"sts"`
 }
 
 type EventInfo struct {
@@ -55,18 +54,6 @@ type TeamDetail struct {
 	Name  string `json:"name"`
 	Score string `json:"score"`
 	Goals string `json:"goals"` // soccer sometimes uses "goals" instead of "score"
-}
-
-type OddsMarket struct {
-	Name         string                     `json:"name"`
-	Suspend      string                     `json:"suspend"`
-	Participants map[string]OddsParticipant `json:"participants"`
-}
-
-type OddsParticipant struct {
-	Name    string `json:"name"`
-	ValueEU string `json:"value_eu"`
-	Suspend string `json:"suspend"`
 }
 
 // Parser converts raw webhook payloads into domain events.
@@ -102,7 +89,6 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 		period := p.normalizePeriod(&ev)
 		league := ev.Info.League
 
-		odds := p.parseOdds(&ev)
 		homeRC, awayRC := p.extractRedCards(&ev)
 
 		gu := events.GameUpdateEvent{
@@ -120,12 +106,6 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			HomeRedCards: homeRC,
 			AwayRedCards: awayRC,
 		}
-		if odds != nil {
-			gu.LiveOddsHome = odds.HomePregameStrength
-			gu.LiveOddsDraw = odds.DrawPct
-			gu.LiveOddsAway = odds.AwayPregameStrength
-		}
-
 		gu.MatchStatus = p.inferMatchStatus(&ev, homeScore, awayScore, period)
 
 		if p.sport == events.SportHockey {
@@ -320,110 +300,6 @@ func parsePeriodClock(seconds string, defaultVal float64) float64 {
 	return defaultVal
 }
 
-// ParsedOdds holds vig-free implied probabilities extracted from a webhook event.
-type ParsedOdds struct {
-	HomePregameStrength *float64
-	DrawPct             *float64 // nil for hockey
-	AwayPregameStrength *float64
-}
-
-// parseOdds extracts vig-free moneyline probabilities from the event's odds map.
-// Mirrors goalserve/inplay.py parse_event_odds.
-func (p *Parser) parseOdds(ev *WebhookEvent) *ParsedOdds {
-	if len(ev.Odds) == 0 {
-		return nil
-	}
-
-	hockeyKW := []string{"home/away", "moneyline"}
-	soccerKW := []string{"moneyline", "match winner", "fulltime", "full time", "1x2"}
-	excludeKW := []string{
-		"1st half", "2nd half", "first half", "second half",
-		"1st period", "2nd period", "3rd period",
-		"half time", "halftime",
-		"minute", "corner", "card", "handicap",
-		"extra time", "OVERTIME",
-	}
-
-	var mlMarket *OddsMarket
-	for _, mkt := range ev.Odds {
-		name := strings.ToLower(mkt.Name)
-		if len(mkt.Participants) == 0 {
-			continue
-		}
-
-		kw := soccerKW
-		if p.sport == events.SportHockey {
-			kw = hockeyKW
-		}
-
-		if mlMarket == nil && containsAny(name, kw) && !containsAny(name, excludeKW) {
-			m := mkt
-			mlMarket = &m
-		}
-	}
-
-	if mlMarket == nil || mlMarket.Suspend == "1" {
-		return nil
-	}
-
-	decOdds := make(map[string]float64)
-	for _, participant := range mlMarket.Participants {
-		if participant.Suspend == "1" {
-			continue
-		}
-		pName := strings.ToLower(strings.TrimSpace(participant.Name))
-		val, err := strconv.ParseFloat(participant.ValueEU, 64)
-		if err != nil || val <= 1.0 {
-			continue
-		}
-		decOdds[pName] = val
-	}
-
-	if p.sport == events.SportHockey || p.sport == events.SportFootball {
-		homeDec, hOK := decOdds["home"]
-		awayDec, aOK := decOdds["away"]
-		if !hOK || !aOK {
-			return nil
-		}
-		homeProb, awayProb := removeVig2(homeDec, awayDec)
-		return &ParsedOdds{
-			HomePregameStrength: &homeProb,
-			AwayPregameStrength: &awayProb,
-		}
-	}
-
-	// Soccer: 3-way
-	homeDec, hOK := decOdds["home"]
-	drawDec, dOK := decOdds["draw"]
-	awayDec, aOK := decOdds["away"]
-	if !hOK || !dOK || !aOK {
-		return nil
-	}
-	h, d, a := removeVig3(homeDec, drawDec, awayDec)
-	return &ParsedOdds{
-		HomePregameStrength: &h,
-		DrawPct:             &d,
-		AwayPregameStrength: &a,
-	}
-}
-
-// removeVig2 removes the bookmaker margin from 2-way decimal odds.
-func removeVig2(a, b float64) (float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	total := rawA + rawB
-	return rawA / total, rawB / total
-}
-
-// removeVig3 removes the bookmaker margin from 3-way decimal odds.
-func removeVig3(a, b, c float64) (float64, float64, float64) {
-	rawA := 1.0 / a
-	rawB := 1.0 / b
-	rawC := 1.0 / c
-	total := rawA + rawB + rawC
-	return rawA / total, rawB / total, rawC / total
-}
-
 func parseStartTsUTC(s string) int64 {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -564,11 +440,3 @@ func (p *Parser) extractPowerPlay(ev *WebhookEvent) (powerPlay bool, homePen, aw
 	return powerPlay, homePen, awayPen
 }
 
-func containsAny(s string, substrs []string) bool {
-	for _, sub := range substrs {
-		if strings.Contains(s, sub) {
-			return true
-		}
-	}
-	return false
-}

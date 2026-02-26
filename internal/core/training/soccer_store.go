@@ -56,10 +56,6 @@ type SoccerRow struct {
 // OddsBackfill holds the delayed-fill odds columns.
 // Nil pointers are written as SQL NULL.
 type OddsBackfill struct {
-	Bet365HomePctL *float64
-	Bet365DrawPctL *float64
-	Bet365AwayPctL *float64
-
 	KalshiHomePctL *float64
 	KalshiDrawPctL *float64
 	KalshiAwayPctL *float64
@@ -111,10 +107,6 @@ func OpenStore(path string) (*Store, error) {
 			pregame_away_pct REAL,
 			pregame_g0       REAL,
 
-			bet365_home_pct_l REAL,
-			bet365_draw_pct_l REAL,
-			bet365_away_pct_l REAL,
-
 			kalshi_home_pct_l   REAL,
 			kalshi_draw_pct_l   REAL,
 			kalshi_away_pct_l   REAL,
@@ -129,6 +121,11 @@ func OpenStore(path string) (*Store, error) {
 			return nil, fmt.Errorf("init schema (%s): %w", stmt, err)
 		}
 	}
+
+	// Migrations (errors ignored for idempotency).
+	db.Exec(`ALTER TABLE soccer_training DROP COLUMN bet365_home_pct_l`)
+	db.Exec(`ALTER TABLE soccer_training DROP COLUMN bet365_draw_pct_l`)
+	db.Exec(`ALTER TABLE soccer_training DROP COLUMN bet365_away_pct_l`)
 
 	var size int64
 	row := db.QueryRow(`SELECT COALESCE(page_count * page_size, 0) FROM pragma_page_count(), pragma_page_size()`)
@@ -211,19 +208,13 @@ func (s *Store) BackfillOdds(rowID int64, odds OddsBackfill) {
 
 		_, err := s.db.Exec(
 			`UPDATE soccer_training SET
-				bet365_home_pct_l = ?,
-				bet365_draw_pct_l = ?,
-				bet365_away_pct_l = ?,
 				kalshi_home_pct_l = ?,
 				kalshi_draw_pct_l = ?,
 				kalshi_away_pct_l = ?
 			WHERE id = ?`,
-		round5(odds.Bet365HomePctL),
-		round5(odds.Bet365DrawPctL),
-		round5(odds.Bet365AwayPctL),
-		round5(odds.KalshiHomePctL),
-		round5(odds.KalshiDrawPctL),
-		round5(odds.KalshiAwayPctL),
+			round5(odds.KalshiHomePctL),
+			round5(odds.KalshiDrawPctL),
+			round5(odds.KalshiAwayPctL),
 			rowID,
 		)
 		if err != nil {

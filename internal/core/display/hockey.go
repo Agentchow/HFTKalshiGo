@@ -143,13 +143,6 @@ func shortName(name string) string {
 	return last
 }
 
-func pctOrZero(p *float64) float64 {
-	if p == nil {
-		return 0
-	}
-	return *p
-}
-
 func fmtTimeLeft(minutes float64) string {
 	totalSec := int(minutes*60 + 0.5)
 	m := totalSec / 60

@@ -55,7 +55,7 @@ type GameContext struct {
 	HomeTeamNorm string
 	AwayTeamNorm string
 
-	// Sport-specific state (scores, period, model output, tickers, bet365 odds).
+	// Sport-specific state (scores, period, model output, tickers).
 	Game GameState
 
 	MatchStatus events.MatchStatus

@@ -39,11 +39,6 @@ type GameUpdateEvent struct {
 	// Zero when GoalServe doesn't provide it (some hockey feeds).
 	GameStartUTC int64 `json:"game_start_utc,omitempty"`
 
-	// Live odds (bet365 via GoalServe webhook/WS), nil if unavailable.
-	LiveOddsHome *float64 `json:"home_win_pct,omitempty"`
-	LiveOddsDraw *float64 `json:"draw_pct,omitempty"` // soccer only
-	LiveOddsAway *float64 `json:"away_win_pct,omitempty"`
-
 	// Soccer red card counts from the current webhook snapshot.
 	HomeRedCards int `json:"home_red_cards,omitempty"`
 	AwayRedCards int `json:"away_red_cards,omitempty"`

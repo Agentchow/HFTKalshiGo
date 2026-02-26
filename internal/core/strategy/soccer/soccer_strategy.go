@@ -11,8 +11,6 @@ import (
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
 
-const edgeThreshold = 3.0 // percentage points
-
 // Strategy implements soccer-specific 3-way (1X2) trading logic.
 // Pregame odds are applied by the engine at initialization time —
 // the strategy only handles live evaluation.
@@ -88,30 +86,12 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	if rcChanged {
 		gc.Notify(string(events.StatusRedCard))
 	}
+
 	if !changed {
 		return strategy.EvalResult{}
 	}
 
 	telemetry.Metrics.ScoreChanges.Inc()
-
-	ss.Bet365Updated = false
-	if gu.LiveOddsHome != nil && gu.LiveOddsDraw != nil && gu.LiveOddsAway != nil {
-		h := *gu.LiveOddsHome * 100
-		d := *gu.LiveOddsDraw * 100
-		a := *gu.LiveOddsAway * 100
-		ss.Bet365Updated = ss.Bet365HomePct == nil || *ss.Bet365HomePct != h
-		ss.Bet365HomePct = &h
-		ss.Bet365DrawPct = &d
-		ss.Bet365AwayPct = &a
-
-		// TEMP: use Bet365 as model (edge = Bet365 - Kalshi)
-		ss.ModelHomeYes = h
-		ss.ModelDrawYes = d
-		ss.ModelAwayYes = a
-		ss.ModelHomeNo = 100 - h
-		ss.ModelDrawNo = 100 - d
-		ss.ModelAwayNo = 100 - a
-	}
 
 	return strategy.EvalResult{}
 }

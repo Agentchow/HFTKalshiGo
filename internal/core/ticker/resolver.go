@@ -214,6 +214,11 @@ const marketCacheTTL = 10 * time.Minute
 const matchWindowHockey = 12 * time.Hour
 const matchWindowSoccer = 16 * time.Hour
 
+// marketHorizon is the maximum time into the future we keep markets for.
+// Games further out than this are unlikely to have GoalServe pregame data
+// and just create noise in the unmatched warnings.
+const marketHorizon = 48 * time.Hour
+
 // RefreshMarkets fetches all open markets for a sport from Kalshi.
 func (r *Resolver) RefreshMarkets(ctx context.Context, sport events.Sport) error {
 	series := r.seriesTickers[sport]
@@ -221,14 +226,25 @@ func (r *Resolver) RefreshMarkets(ctx context.Context, sport events.Sport) error
 		return nil
 	}
 
+	now := time.Now()
+	cutoff := now.Add(marketHorizon)
+
 	var all []kalshi_http.Market
+	var skipped int
 	for _, s := range series {
 		markets, err := r.client.GetMarkets(ctx, s)
 		if err != nil {
 			telemetry.Warnf("ticker: failed to fetch series %s: %v", s, err)
 			continue
 		}
-		all = append(all, markets...)
+		for _, m := range markets {
+			expiry := parseMarketExpiry(m)
+			if !expiry.IsZero() && expiry.After(cutoff) {
+				skipped++
+				continue
+			}
+			all = append(all, m)
+		}
 	}
 
 	r.mu.Lock()
@@ -236,7 +252,7 @@ func (r *Resolver) RefreshMarkets(ctx context.Context, sport events.Sport) error
 	r.lastFetch[sport] = time.Now()
 	r.mu.Unlock()
 
-	telemetry.Infof("ticker: fetched %d markets for %s (%d series)", len(all), sport, len(series))
+	telemetry.Infof("ticker: fetched %d markets for %s (%d series, %d skipped >48h)", len(all), sport, len(series), skipped)
 	return nil
 }
 

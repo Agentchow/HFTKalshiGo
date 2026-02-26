@@ -59,10 +59,9 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	}
 
 	var b strings.Builder
+	fmt.Fprintf(&b, "\n[%s %s]%s\n", titleEvent, ts, wsTag)
 	if gc.KalshiEventURL != "" {
-		fmt.Fprintf(&b, "\n[%s %s]  %s%s\n", titleEvent, ts, gc.KalshiEventURL, wsTag)
-	} else {
-		fmt.Fprintf(&b, "\n[%s %s]%s\n", titleEvent, ts, wsTag)
+		fmt.Fprintf(&b, "%s\n", gc.KalshiEventURL)
 	}
 	fmt.Fprintf(&b, "%s\n", divider)
 	fmt.Fprintf(&b, "  %s vs %s\n", hs.HomeTeam, hs.AwayTeam)

@@ -27,11 +27,11 @@ type TickerSubscriber interface {
 type PregameProvider func() ([]odds.PregameOdds, error)
 
 const (
-	refreshInterval      = 10 * time.Minute
-	initMaxAttempts      = 5
-	initRetryBase        = 10 * time.Second
-	refreshBackoffBase   = 10 * time.Second
-	refreshBackoffMax    = 5 * time.Minute
+	refreshInterval    = 10 * time.Minute
+	initMaxAttempts    = 5
+	initRetryBase      = 10 * time.Second
+	refreshBackoffBase = 10 * time.Second
+	refreshBackoffMax  = 5 * time.Minute
 )
 
 // Engine subscribes to GameUpdateEvent, MarketEvent, and WSStatusEvent.
@@ -89,7 +89,7 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			result = e.fuzzyTeamLookup(gu.Sport, homeNorm, awayNorm)
 		}
 		if result == nil {
-			telemetry.Warnf("engine: unmatched %s event eid=%s  %q vs %q  (norm: %q vs %q)  period=%s",
+			telemetry.Debugf("engine: unmatched %s event eid=%s  %q vs %q  (norm: %q vs %q)  period=%s",
 				gu.Sport, gu.EID, gu.HomeTeam, gu.AwayTeam, homeNorm, awayNorm, gu.Period)
 			return nil
 		}
@@ -362,14 +362,21 @@ func (e *Engine) InitializeGames(ctx context.Context, sport events.Sport, provid
 	}
 
 	created := 0
+	matched := make(map[string]bool)
 	aliases := ticker.AliasesForSport(sport)
 	for _, p := range pregame {
-		if e.initializeGame(ctx, sport, p, aliases) {
+		if et := e.initializeGame(ctx, sport, p, aliases); et != "" {
+			matched[et] = true
 			created++
 		}
 	}
 
 	telemetry.Infof("engine: initialized %d games for %s (from %d pregame entries)", created, sport, len(pregame))
+
+	for _, ue := range e.resolver.UnmatchedKalshiEvents(sport, matched) {
+		telemetry.Warnf("engine: Kalshi event %s has no matching pregame data (%s vs %s)",
+			ue.EventTicker, ue.Home, ue.Away)
+	}
 
 	go e.startPeriodicRefresh(ctx, sport, provider)
 }
@@ -394,22 +401,23 @@ func (e *Engine) fetchPregameWithRetry(provider PregameProvider) []odds.PregameO
 }
 
 // initializeGame matches one pregame entry against Kalshi markets and creates
-// a GameContext if a match is found. Returns true if a game was created.
-func (e *Engine) initializeGame(ctx context.Context, sport events.Sport, p odds.PregameOdds, aliases map[string]string) bool {
+// a GameContext if a match is found. Returns the matched Kalshi event ticker,
+// or "" if no match was found.
+func (e *Engine) initializeGame(ctx context.Context, sport events.Sport, p odds.PregameOdds, aliases map[string]string) string {
 	homeNorm := ticker.Normalize(p.HomeTeam, aliases)
 	awayNorm := ticker.Normalize(p.AwayTeam, aliases)
 	if homeNorm == "" || awayNorm == "" {
-		return false
+		return ""
 	}
 
 	// Skip if we already have a GameContext for this team pair.
 	if existing := e.store.GetByTeams(sport, homeNorm, awayNorm); existing != nil {
-		return false
+		return ""
 	}
 
 	resolved := e.resolver.Resolve(ctx, sport, p.HomeTeam, p.AwayTeam, time.Now())
 	if resolved == nil {
-		return false
+		return ""
 	}
 
 	// Pregame is the source of truth for orientation — no swap detection needed.
@@ -453,7 +461,7 @@ func (e *Engine) initializeGame(ctx context.Context, sport events.Sport, p odds.
 	e.store.Put(gc)
 	telemetry.Metrics.ActiveGames.Inc()
 	telemetry.Infof("[Created] GameContext \"%s\" vs \"%s\"", p.HomeTeam, p.AwayTeam)
-	return true
+	return resolved.EventTicker
 }
 
 // applyPregameToState writes pregame odds directly onto the sport-specific
@@ -502,7 +510,7 @@ func (e *Engine) startPeriodicRefresh(ctx context.Context, sport events.Sport, p
 
 		created := 0
 		for _, p := range pregame {
-			if e.initializeGame(ctx, sport, p, aliases) {
+			if et := e.initializeGame(ctx, sport, p, aliases); et != "" {
 				created++
 			}
 		}

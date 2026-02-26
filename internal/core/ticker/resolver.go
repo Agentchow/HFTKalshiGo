@@ -603,6 +603,65 @@ func parseMarketExpiry(m kalshi_http.Market) time.Time {
 	return time.Time{}
 }
 
+// UnmatchedKalshiEvent describes a Kalshi event that was not matched to any
+// pregame entry during initialization.
+type UnmatchedKalshiEvent struct {
+	EventTicker string
+	Home        string
+	Away        string
+}
+
+// UnmatchedKalshiEvents returns Kalshi events for the given sport that were
+// not matched during initialization. matched is the set of event tickers that
+// were successfully resolved to a GameContext.
+func (r *Resolver) UnmatchedKalshiEvents(sport events.Sport, matched map[string]bool) []UnmatchedKalshiEvent {
+	aliases := r.aliases[sport]
+
+	r.mu.RLock()
+	markets := r.markets[sport]
+	r.mu.RUnlock()
+
+	byEvent := make(map[string][]kalshi_http.Market)
+	for _, m := range markets {
+		if m.EventTicker != "" {
+			byEvent[m.EventTicker] = append(byEvent[m.EventTicker], m)
+		}
+	}
+
+	var out []UnmatchedKalshiEvent
+	for et, group := range byEvent {
+		if matched[et] {
+			continue
+		}
+		var home, away string
+		for _, m := range group {
+			if t1, t2 := teamNamesFromTitle(m.Title, aliases); t1 != "" && t2 != "" {
+				home, away = t1, t2
+				break
+			}
+		}
+		if home == "" {
+			for _, m := range group {
+				name := normalizeYesSubTitle(m.YesSubTitle, aliases)
+				if name != "" {
+					if home == "" {
+						home = name
+					} else if away == "" {
+						away = name
+						break
+					}
+				}
+			}
+		}
+		out = append(out, UnmatchedKalshiEvent{
+			EventTicker: et,
+			Home:        home,
+			Away:        away,
+		})
+	}
+	return out
+}
+
 func absTimeDiff(a, b time.Time) time.Duration {
 	if a.IsZero() || b.IsZero() {
 		return time.Duration(1<<63 - 1) // max duration — worst possible match

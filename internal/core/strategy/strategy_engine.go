@@ -27,7 +27,7 @@ type TickerSubscriber interface {
 type PregameProvider func() ([]odds.PregameOdds, error)
 
 const (
-	refreshInterval    = 10 * time.Minute
+	refreshInterval    = 1 * time.Hour
 	initMaxAttempts    = 5
 	initRetryBase      = 10 * time.Second
 	refreshBackoffBase = 10 * time.Second

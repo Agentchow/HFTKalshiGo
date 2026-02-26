@@ -206,7 +206,7 @@ func NewResolver(client MarketFetcher, tickersConfigDir string, sports ...events
 	}
 }
 
-const marketCacheTTL = 10 * time.Minute
+const marketCacheTTL = 1 * time.Hour
 
 // Markets whose expiration is more than this far from the game's start time
 // are rejected in favour of a closer match. Matches the Python codebase's

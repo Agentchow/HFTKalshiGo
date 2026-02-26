@@ -232,12 +232,24 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		totalGame := 60.0 // 3 x 20 min periods
-		remain := totalGame - float64(et)/60.0
+		periodMin := float64(et) / 60.0
 		switch pc {
 		case 0:
 			return 60.0
-		case 1, 2, 3:
+		case 1:
+			remain := 60.0 - periodMin
+			if remain < 0 {
+				remain = 0
+			}
+			return remain
+		case 2:
+			remain := 40.0 - periodMin
+			if remain < 0 {
+				remain = 0
+			}
+			return remain
+		case 3:
+			remain := 20.0 - periodMin
 			if remain < 0 {
 				remain = 0
 			}

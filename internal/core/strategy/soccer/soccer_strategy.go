@@ -103,6 +103,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		ss.Bet365HomePct = &h
 		ss.Bet365DrawPct = &d
 		ss.Bet365AwayPct = &a
+
+		// TEMP: use Bet365 as model (edge = Bet365 - Kalshi)
+		ss.ModelHomeYes = h
+		ss.ModelDrawYes = d
+		ss.ModelAwayYes = a
+		ss.ModelHomeNo = 100 - h
+		ss.ModelDrawNo = 100 - d
+		ss.ModelAwayNo = 100 - a
 	}
 
 	return strategy.EvalResult{}

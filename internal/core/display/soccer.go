@@ -77,20 +77,20 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 
 	hasKalshi := homeYes > 0 || homeNo > 0 || drawYes > 0 || drawNo > 0 || awayYes > 0 || awayNo > 0
 
-	// 3-column header — widths 6/13/13 match the data rows (number + suffix)
-	fmt.Fprintf(&b, "    %40s%6s%13s%13s\n", "", homeShort, "TIE", awayShort)
+	// 3-column header — widths 8/14/14; data uses %7.0fc so "Nc" fits in 8, etc.
+	fmt.Fprintf(&b, "    %40s%8s%14s%14s\n", "", homeShort, "TIE", awayShort)
 	if !gc.KalshiConnected && len(gc.Tickers) > 0 {
 		fmt.Fprintf(&b, "    *** Kalshi WS disconnected — prices stale ***\n")
 	}
 	if hasKalshi {
-		fmt.Fprintf(&b, "    %-40s%5.0fc%12.0fc%12.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
+		fmt.Fprintf(&b, "    %-40s%7.0fc%13.0fc%13.0fc\n", "Kalshi YES:", homeYes, drawYes, awayYes)
 	} else {
-		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi YES:", "—", "—", "—")
+		fmt.Fprintf(&b, "    %-40s%8s%14s%14s\n", "Kalshi YES:", "—", "—", "—")
 	}
 	if hasBet365 {
-		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Bet365 YES:", b365Home, b365Draw, b365Away)
+		fmt.Fprintf(&b, "    %-40s%7.1f%%%13.1f%%%13.1f%%\n", "Bet365 YES:", b365Home, b365Draw, b365Away)
 		if hasKalshi {
-			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge YES:",
+			fmt.Fprintf(&b, "    %-40s%8s%14s%14s\n", "Edge YES:",
 				fmtEdge(edgeHomeYes), fmtEdge(edgeDrawYes), fmtEdge(edgeAwayYes))
 		}
 	} else {
@@ -99,39 +99,42 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 
 	fmt.Fprintf(&b, "\n")
 	if hasKalshi {
-		fmt.Fprintf(&b, "    %-40s%5.0fc%12.0fc%12.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
+		fmt.Fprintf(&b, "    %-40s%7.0fc%13.0fc%13.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
 	} else {
-		fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Kalshi NO:", "—", "—", "—")
+		fmt.Fprintf(&b, "    %-40s%8s%14s%14s\n", "Kalshi NO:", "—", "—", "—")
 	}
 	if hasBet365 {
-		fmt.Fprintf(&b, "    %-40s%5.1f%%%12.1f%%%12.1f%%\n", "Bet365 NO:", 100-b365Home, 100-b365Draw, 100-b365Away)
+		fmt.Fprintf(&b, "    %-40s%7.1f%%%13.1f%%%13.1f%%\n", "Bet365 NO:", 100-b365Home, 100-b365Draw, 100-b365Away)
 		if hasKalshi {
-			fmt.Fprintf(&b, "    %-40s%6s%13s%13s\n", "Edge NO:",
+			fmt.Fprintf(&b, "    %-40s%8s%14s%14s\n", "Edge NO:",
 				fmtEdge(edgeHomeNo), fmtEdge(edgeDrawNo), fmtEdge(edgeAwayNo))
 		}
 	}
 
-	// Edge summary line — only when both sources are available
+	// Edge summary line — only when both sources are available; Tie in the middle
 	if hasBet365 && hasKalshi {
-		var edges []string
-		for _, e := range []struct {
-			name string
-			side string
-			val  float64
-		}{
-			{homeShort, "YES", edgeHomeYes},
-			{"Tie", "YES", edgeDrawYes},
-			{awayShort, "YES", edgeAwayYes},
-			{homeShort, "NO", edgeHomeNo},
-			{"Tie", "NO", edgeDrawNo},
-			{awayShort, "NO", edgeAwayNo},
-		} {
-			if e.val >= 3.0 {
-				edges = append(edges, fmt.Sprintf("%s %s %+.1f%%", e.name, e.side, e.val))
-			}
+		var homeEdges, tieEdges, awayEdges []string
+		if edgeHomeYes >= 3.0 {
+			homeEdges = append(homeEdges, fmt.Sprintf("%s YES %+.1f%%", homeShort, edgeHomeYes))
 		}
-		if len(edges) > 0 {
-			fmt.Fprintf(&b, "    >>> %s\n", strings.Join(edges, " | "))
+		if edgeHomeNo >= 3.0 {
+			homeEdges = append(homeEdges, fmt.Sprintf("%s NO %+.1f%%", homeShort, edgeHomeNo))
+		}
+		if edgeDrawYes >= 3.0 {
+			tieEdges = append(tieEdges, fmt.Sprintf("Tie YES %+.1f%%", edgeDrawYes))
+		}
+		if edgeDrawNo >= 3.0 {
+			tieEdges = append(tieEdges, fmt.Sprintf("Tie NO %+.1f%%", edgeDrawNo))
+		}
+		if edgeAwayYes >= 3.0 {
+			awayEdges = append(awayEdges, fmt.Sprintf("%s YES %+.1f%%", awayShort, edgeAwayYes))
+		}
+		if edgeAwayNo >= 3.0 {
+			awayEdges = append(awayEdges, fmt.Sprintf("%s NO %+.1f%%", awayShort, edgeAwayNo))
+		}
+		all := append(append(homeEdges, tieEdges...), awayEdges...)
+		if len(all) > 0 {
+			fmt.Fprintf(&b, "    >>> %s\n", strings.Join(all, " | "))
 		}
 	}
 

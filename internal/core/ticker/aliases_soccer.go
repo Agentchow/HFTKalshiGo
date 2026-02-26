@@ -146,8 +146,8 @@ var SoccerAliases = map[string]string{
 	// Brasileirao
 	"flamengo rj":   "flamengo",
 	"rb bragantino": "bragantino", "red bull bragantino": "bragantino",
-	"atl. paranaense": "paranaense", "athletico paranaense": "paranaense",
-	"atl. mineiro": "atletico mineiro",
+	"atl. paranaense": "paranaense", "athletico paranaense": "paranaense", "athletico-pr": "paranaense",
+	"atl. mineiro": "atletico mineiro", "atletico-mg": "atletico mineiro",
 	"ec vitoria":   "vitoria",
 
 	// Belgian Pro League

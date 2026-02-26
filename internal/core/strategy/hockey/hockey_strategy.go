@@ -325,16 +325,22 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 		pHome := ticker.Normalize(p.HomeTeam, ticker.HockeyAliases)
 		pAway := ticker.Normalize(p.AwayTeam, ticker.HockeyAliases)
 
-		if (fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)) ||
-			(fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)) {
-			hs.HomeStrength = p.HomePregameStrength
-			hs.AwayStrength = p.AwayPregameStrength
+		sameOrder := fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)
+		swapped := fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)
+		if sameOrder || swapped {
+			if swapped {
+				hs.HomeStrength = p.AwayPregameStrength
+				hs.AwayStrength = p.HomePregameStrength
+			} else {
+				hs.HomeStrength = p.HomePregameStrength
+				hs.AwayStrength = p.AwayPregameStrength
+			}
 			if p.G0 > 0 {
 				g0 := p.G0
 				hs.PregameG0 = &g0
 			}
-			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%%",
-				homeTeam, awayTeam, p.HomePregameStrength*100, p.AwayPregameStrength*100)
+			telemetry.Debugf("pregame: matched %s vs %s -> H=%.1f%% A=%.1f%% (swapped=%v)",
+				homeTeam, awayTeam, hs.HomeStrength*100, hs.AwayStrength*100, swapped)
 			return true
 		}
 	}

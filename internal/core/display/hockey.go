@@ -65,8 +65,8 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	} else if hs.IsAwayPowerPlay {
 		ppTag = fmt.Sprintf("  [%s PP]", awayShort)
 	}
-	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)%s\n",
-		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft, ppTag)
+	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%s left)%s\n",
+		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, fmtTimeLeft(hs.TimeLeft), ppTag)
 	bestHome := homeYes
 	bestAway := awayYes
 
@@ -139,4 +139,11 @@ func pctOrZero(p *float64) float64 {
 		return 0
 	}
 	return *p
+}
+
+func fmtTimeLeft(minutes float64) string {
+	totalSec := int(minutes*60 + 0.5)
+	m := totalSec / 60
+	s := totalSec % 60
+	return fmt.Sprintf("%dm %ds", m, s)
 }

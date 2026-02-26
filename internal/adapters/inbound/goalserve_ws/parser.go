@@ -50,11 +50,14 @@ func ParseUpdt(msg *UpdtMessage) *events.Event {
 		gu.PowerPlay, gu.HomePenaltyCount, gu.AwayPenaltyCount = extractPowerPlay(msg)
 	}
 
-	odds := extractMoneylineOdds(sport, msg)
-	if odds != nil {
-		gu.HomeStrength = odds.home
-		gu.DrawPct = odds.draw
-		gu.AwayStrength = odds.away
+	// Only use odds from Bet365 push events (WS connection is bookmaker-specific).
+	if msg.BM == "bet365" {
+		odds := extractMoneylineOdds(sport, msg)
+		if odds != nil {
+			gu.LiveOddsHome = odds.home
+			gu.LiveOddsDraw = odds.draw
+			gu.LiveOddsAway = odds.away
+		}
 	}
 
 	gu.MatchStatus = inferMatchStatus(sport, msg, homeScore, awayScore)
@@ -232,28 +235,17 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		periodMin := float64(et) / 60.0
+		// et is a countdown: seconds remaining in the current period
+		periodRemain := float64(et) / 60.0
 		switch pc {
 		case 0:
 			return 60.0
 		case 1:
-			remain := 60.0 - periodMin
-			if remain < 0 {
-				remain = 0
-			}
-			return remain
+			return periodRemain + 40.0
 		case 2:
-			remain := 40.0 - periodMin
-			if remain < 0 {
-				remain = 0
-			}
-			return remain
+			return periodRemain + 20.0
 		case 3:
-			remain := 20.0 - periodMin
-			if remain < 0 {
-				remain = 0
-			}
-			return remain
+			return periodRemain
 		default:
 			return 0
 		}
@@ -361,7 +353,11 @@ func extractMoneylineOdds(sport events.Sport, msg *UpdtMessage) *parsedOdds {
 	}
 
 	for _, mkt := range msg.Odds {
-		if mkt.BL != 0 || mkt.HA != nil {
+		if mkt.BL != 0 {
+			continue
+		}
+		// Skip handicap markets; accept nil or explicit 0 (no handicap).
+		if mkt.HA != nil && *mkt.HA != 0 {
 			continue
 		}
 		if len(mkt.O) != wantWays {

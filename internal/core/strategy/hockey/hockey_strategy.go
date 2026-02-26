@@ -72,18 +72,21 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 		}
 	}
 
+	hadLIVEData := hs.HasLIVEData()
 	changed := hs.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	s.updatePowerPlay(gc, hs, gu)
 	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}
 
+	scoreChanged := hadLIVEData && changed
+
 	telemetry.Metrics.ScoreChanges.Inc()
 
 	hs.Bet365Updated = false
-	if gu.HomeStrength != nil && gu.AwayStrength != nil {
-		h := *gu.HomeStrength * 100
-		a := *gu.AwayStrength * 100
+	if gu.LiveOddsHome != nil && gu.LiveOddsAway != nil {
+		h := *gu.LiveOddsHome * 100
+		a := *gu.LiveOddsAway * 100
 		hs.Bet365Updated = hs.Bet365HomePct == nil || *hs.Bet365HomePct != h
 		hs.Bet365HomePct = &h
 		hs.Bet365AwayPct = &a
@@ -91,6 +94,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 
 	s.computeModel(hs)
 	hs.RecalcEdge(gc.Tickers)
+
+	if !scoreChanged && !overturn {
+		return strategy.EvalResult{}
+	}
 
 	return strategy.EvalResult{
 		Intents: s.buildOrderIntent(gc, hs, s.findEdges(hs), overturn),

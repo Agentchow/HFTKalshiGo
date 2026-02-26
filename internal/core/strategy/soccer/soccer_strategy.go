@@ -95,10 +95,10 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	telemetry.Metrics.ScoreChanges.Inc()
 
 	ss.Bet365Updated = false
-	if gu.HomeStrength != nil && gu.DrawPct != nil && gu.AwayStrength != nil {
-		h := *gu.HomeStrength * 100
-		d := *gu.DrawPct * 100
-		a := *gu.AwayStrength * 100
+	if gu.LiveOddsHome != nil && gu.LiveOddsDraw != nil && gu.LiveOddsAway != nil {
+		h := *gu.LiveOddsHome * 100
+		d := *gu.LiveOddsDraw * 100
+		a := *gu.LiveOddsAway * 100
 		ss.Bet365Updated = ss.Bet365HomePct == nil || *ss.Bet365HomePct != h
 		ss.Bet365HomePct = &h
 		ss.Bet365DrawPct = &d

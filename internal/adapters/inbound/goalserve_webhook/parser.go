@@ -121,9 +121,9 @@ func (p *Parser) Parse(payload *WebhookPayload) []events.Event {
 			AwayRedCards: awayRC,
 		}
 		if odds != nil {
-			gu.HomeStrength = odds.HomePregameStrength
-			gu.DrawPct = odds.DrawPct
-			gu.AwayStrength = odds.AwayPregameStrength
+			gu.LiveOddsHome = odds.HomePregameStrength
+			gu.LiveOddsDraw = odds.DrawPct
+			gu.LiveOddsAway = odds.AwayPregameStrength
 		}
 
 		gu.MatchStatus = p.inferMatchStatus(&ev, homeScore, awayScore, period)

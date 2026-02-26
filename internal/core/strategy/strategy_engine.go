@@ -89,7 +89,9 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 			result = e.fuzzyTeamLookup(gu.Sport, homeNorm, awayNorm)
 		}
 		if result == nil {
-			return nil // not a game we trade
+			telemetry.Warnf("engine: unmatched %s event eid=%s  %q vs %q  (norm: %q vs %q)  period=%s",
+				gu.Sport, gu.EID, gu.HomeTeam, gu.AwayTeam, homeNorm, awayNorm, gu.Period)
+			return nil
 		}
 
 		gc = result.GC
@@ -100,8 +102,8 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 				id.SetIdentifiers(gu.EID, gu.League)
 			}
 		})
-		telemetry.Infof("engine: bound EID %s to %s vs %s (swapped=%v)",
-			gu.EID, gc.HomeTeamNorm, gc.AwayTeamNorm, result.Swapped)
+		telemetry.Infof("engine: bound EID %s to %s vs %s",
+			gu.EID, gc.HomeTeamNorm, gc.AwayTeamNorm)
 	}
 
 	if e.needsSwap(gc, &gu) {
@@ -225,7 +227,7 @@ func (e *Engine) fuzzyTeamLookup(sport events.Sport, homeNorm, awayNorm string) 
 		sameOrder := ticker.FuzzyContains(gc.HomeTeamNorm, homeNorm) && ticker.FuzzyContains(gc.AwayTeamNorm, awayNorm)
 		swapped := ticker.FuzzyContains(gc.HomeTeamNorm, awayNorm) && ticker.FuzzyContains(gc.AwayTeamNorm, homeNorm)
 		if sameOrder || swapped {
-			return &store.TeamLookupResult{GC: gc, Swapped: swapped && !sameOrder}
+			return &store.TeamLookupResult{GC: gc}
 		}
 	}
 	return nil
@@ -450,7 +452,7 @@ func (e *Engine) initializeGame(ctx context.Context, sport events.Sport, p odds.
 
 	e.store.Put(gc)
 	telemetry.Metrics.ActiveGames.Inc()
-	telemetry.Infof("engine: created game %s vs %s", p.HomeTeam, p.AwayTeam)
+	telemetry.Infof("[Created] GameContext \"%s\" vs \"%s\"", p.HomeTeam, p.AwayTeam)
 	return true
 }
 

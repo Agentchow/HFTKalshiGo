@@ -22,8 +22,7 @@ type TeamKey struct {
 
 // TeamLookupResult is returned by GetByTeams.
 type TeamLookupResult struct {
-	GC      *game.GameContext
-	Swapped bool // true if the query's home matched our canonical away
+	GC *game.GameContext
 }
 
 // GameStateStore is a thread-safe map of all active game contexts.
@@ -77,10 +76,10 @@ func (s *GameStateStore) GetByTeams(sport events.Sport, homeNorm, awayNorm strin
 	defer s.mu.RUnlock()
 
 	if gc, ok := s.teamIndex[TeamKey{Sport: sport, HomeNorm: homeNorm, AwayNorm: awayNorm}]; ok {
-		return &TeamLookupResult{GC: gc, Swapped: false}
+		return &TeamLookupResult{GC: gc}
 	}
 	if gc, ok := s.teamIndex[TeamKey{Sport: sport, HomeNorm: awayNorm, AwayNorm: homeNorm}]; ok {
-		return &TeamLookupResult{GC: gc, Swapped: true}
+		return &TeamLookupResult{GC: gc}
 	}
 	return nil
 }

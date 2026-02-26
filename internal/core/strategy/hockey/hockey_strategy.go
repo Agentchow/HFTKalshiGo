@@ -231,7 +231,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 				Ticker:    oppTicker,
 				Side:      "no",
 				Outcome:   oppOutcome,
-				LimitPct:  100 - e.modelPct - 3,
+				LimitPct:  e.modelPct - 3,
 				Reason:    reason,
 				HomeScore: hs.HomeScore,
 				AwayScore: hs.AwayScore,

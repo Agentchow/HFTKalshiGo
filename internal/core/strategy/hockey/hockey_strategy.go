@@ -328,7 +328,7 @@ func (s *Strategy) applyPregame(hs *hockeyState.HockeyState, homeTeam, awayTeam 
 		sameOrder := fuzzyTeamMatch(pHome, homeNorm) && fuzzyTeamMatch(pAway, awayNorm)
 		swapped := fuzzyTeamMatch(pHome, awayNorm) && fuzzyTeamMatch(pAway, homeNorm)
 		if sameOrder || swapped {
-			if swapped {
+			if swapped && !sameOrder {
 				hs.HomeStrength = p.AwayPregameStrength
 				hs.AwayStrength = p.HomePregameStrength
 			} else {

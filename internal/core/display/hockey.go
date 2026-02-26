@@ -59,8 +59,14 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "  %s vs %s\n", hs.HomeTeam, hs.AwayTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
 		"Pregame strength (Goalserve):", homeShort, hs.HomeStrength*100, awayShort, hs.AwayStrength*100)
-	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)\n",
-		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft)
+	ppTag := ""
+	if hs.IsHomePowerPlay {
+		ppTag = fmt.Sprintf("  [%s PP]", homeShort)
+	} else if hs.IsAwayPowerPlay {
+		ppTag = fmt.Sprintf("  [%s PP]", awayShort)
+	}
+	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (~%.0f min left)%s\n",
+		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, hs.TimeLeft, ppTag)
 	bestHome := homeYes
 	bestAway := awayYes
 

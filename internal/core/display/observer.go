@@ -8,7 +8,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/events"
 )
 
-const edgeDisplayThrottle = 30 * time.Second
+const edgeDisplayThrottle = 1 * time.Minute
 
 // Displayer knows how to format and print game state for a given event.
 type Displayer interface {

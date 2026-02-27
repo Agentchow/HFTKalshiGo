@@ -232,6 +232,8 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 				remain = 0
 			}
 			return remain
+		case 4, 5:
+			return 90.0 - elapsed
 		default:
 			return 0
 		}

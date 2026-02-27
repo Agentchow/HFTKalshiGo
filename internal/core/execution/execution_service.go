@@ -160,7 +160,7 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			TimeInForce: "good_till_canceled",
 		}
 		if !intent.Slam {
-			req.ExpirationTS = time.Now().Add(10 * time.Second).Unix()
+			req.ExpirationTS = time.Now().Add(60 * time.Second).Unix()
 		}
 		priceCents := math.Floor(intent.LimitPct)
 		if strings.HasPrefix(intent.EID, "MOCK-") {

@@ -27,7 +27,7 @@ func ParseUpdt(msg *UpdtMessage) *events.Event {
 	if msg.SC != "" && finishStateCodes[msg.SC] {
 		period = "Finished"
 	}
-	timeLeft := calcTimeRemaining(sport, msg.PC, msg.ET)
+	timeLeft := calcTimeRemaining(sport, msg)
 
 	gu := events.GameUpdateEvent{
 		EID:          msg.ID,
@@ -201,8 +201,10 @@ func mapPeriod(sport events.Sport, pc int) string {
 }
 
 // calcTimeRemaining computes minutes remaining from period code and elapsed seconds.
-// et is total elapsed seconds since kickoff (not period-relative).
-func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
+// For soccer: et is total elapsed seconds since kickoff.
+// For hockey: et is often 0 or 1200 (period boundaries); use CMS tm (elapsed sec in period) when available.
+func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
+	pc, et := msg.PC, msg.ET
 	switch sport {
 	case events.SportSoccer:
 		elapsed := float64(et) / 60.0
@@ -227,8 +229,17 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		// et is a countdown: seconds remaining in the current period
-		periodRemain := float64(et) / 60.0
+		// ET is seconds remaining in period (countdown). Often 0 or 1200 at boundaries.
+		// CMS tm is elapsed seconds in period when the event occurred — use it when ET is uninformative.
+		elapsedInPeriod := hockeyElapsedInPeriod(msg)
+		periodLenSec := 20 * 60 // 20 min regulation period
+		if pc == 4 {
+			periodLenSec = 5 * 60 // OT
+		}
+		periodRemain := float64(periodLenSec-elapsedInPeriod) / 60.0
+		if periodRemain < 0 {
+			periodRemain = 0
+		}
 		switch pc {
 		case 0:
 			return 60.0
@@ -237,6 +248,8 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 		case 2:
 			return periodRemain + 20.0
 		case 3:
+			return periodRemain
+		case 4:
 			return periodRemain
 		default:
 			return 0
@@ -255,6 +268,29 @@ func calcTimeRemaining(sport events.Sport, pc, et int) float64 {
 		default:
 			return 0
 		}
+	}
+	return 0
+}
+
+// hockeyElapsedInPeriod returns elapsed seconds in the current period.
+// Prefers CMS tm (elapsed sec when event occurred) when available; else ET (countdown).
+func hockeyElapsedInPeriod(msg *UpdtMessage) int {
+	periodLen := 20 * 60
+	if msg.PC == 4 {
+		periodLen = 5 * 60
+	}
+	// CMS tm: elapsed seconds in period when the comment/event occurred.
+	if len(msg.CMS) > 0 {
+		for i := len(msg.CMS) - 1; i >= 0; i-- {
+			tm := msg.CMS[i].TM
+			if tm > 0 && tm < periodLen {
+				return tm
+			}
+		}
+	}
+	// Fallback: ET is countdown (sec remaining). elapsed = periodLen - ET.
+	if msg.ET >= 0 && msg.ET <= periodLen {
+		return periodLen - msg.ET
 	}
 	return 0
 }

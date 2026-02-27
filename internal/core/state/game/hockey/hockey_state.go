@@ -114,11 +114,6 @@ func (h *HockeyState) UpdateGameState(homeScore, awayScore int, period string, t
 	firstUpdate := !h.hasLIVEData
 	scoreChanged := h.HomeScore != homeScore || h.AwayScore != awayScore
 
-	// Monotonic decrease guard
-	if h.hasLIVEData && period == h.Period && timeRemain > h.TimeLeft {
-		timeRemain = h.TimeLeft
-	}
-
 	h.HomeScore = homeScore
 	h.AwayScore = awayScore
 	h.Period = period

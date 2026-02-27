@@ -264,7 +264,8 @@ var HockeyAliases = map[string]string{
 
 	// Swiss National League (NL)
 	"hc ajoie":                  "ajoie",
-	"zsc lions":                 "zurich lions",
+	"zsc lions":                 "zurich lions", // GoalServe WS: "ZSC Lions"
+	"zsc lions zurich":          "zurich lions",
 	"zurich":                    "zurich lions",
 	"zsc":                       "zurich lions",
 	"sc bern":                   "bern",
@@ -272,8 +273,9 @@ var HockeyAliases = map[string]string{
 	"ehc biel":                  "biel",
 	"biel-bienne":               "biel",
 	"hc fribourg-gotteron":      "fribourg-gotteron",
-	"fribourg gotteron":         "fribourg-gotteron",
+	"fribourg gotteron":         "fribourg-gotteron", // GoalServe WS: "Fribourg Gotteron"
 	"gotteron":                  "fribourg-gotteron",
+	"gotteron fribourg":         "fribourg-gotteron",
 	"geneve-servette hc":        "geneve-servette",
 	"geneve servette":           "geneve-servette",
 	"geneva-servette":           "geneve-servette",
@@ -281,13 +283,17 @@ var HockeyAliases = map[string]string{
 	"hc lugano":                 "lugano",
 	"hc ambri-piotta":           "ambri-piotta",
 	"ambri piotta":              "ambri-piotta",
-	"lausanne hc":               "lausanne",
+	"lausanne hc":               "lausanne", // GoalServe WS: "Lausanne HC"
+	"hc lausanne":               "lausanne",
 	"ev zug":                    "zug",
 	"scl tigers":                "langnau",
 	"scl tigers langnau":        "langnau",
 	"sc rapperswil-jona lakers": "rapperswil-jona",
-	"rapperswil-jona lakers":    "rapperswil-jona",
+	"rapperswil-jona lakers":    "rapperswil-jona", // GoalServe WS: "Rapperswil-Jona Lakers"
 	"rapperswil jona lakers":    "rapperswil-jona",
+	"rapperswil-jona":           "rapperswil-jona",
+	"rapperswil jona":           "rapperswil-jona",
+	"rapperswil":                "rapperswil-jona",
 	"ehc kloten":                "kloten",
 
 	// Kalshi pregame matching — GoalServe alternate names (from API response)

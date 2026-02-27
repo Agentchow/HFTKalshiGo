@@ -46,7 +46,9 @@ var HockeyAliases = map[string]string{
 	"uti comets":                     "utica comets",
 	"syr crunch":                     "syracuse crunch",
 
-	// NHL
+	// NHL (GoalServe WS uses "EDM Oilers", "LA Kings", etc.)
+	"edm":                "edmonton oilers",
+	"la":                 "los angeles kings",
 	"nyi":                "new york islanders",
 	"ny islanders":       "new york islanders",
 	"ny rangers":         "new york rangers",

@@ -236,10 +236,7 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		if remain, ok := hockeyTimeFromCMS(msg); ok {
-			return remain
-		}
-		return hockeyTimeFromET(pc, et)
+		return hockeyTimeRemaining(msg)
 	case events.SportFootball:
 		totalGame := 60.0 // 4 x 15 min quarters
 		remain := totalGame - float64(et)/60.0
@@ -258,13 +255,9 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 	return 0
 }
 
-// hockeyTimeFromCMS returns minutes remaining using the latest CMS entry.
-// CMS tm is cumulative elapsed seconds from game start (regulation = 3600s, OT = 3900s).
-func hockeyTimeFromCMS(msg *UpdtMessage) (float64, bool) {
-	if len(msg.CMS) == 0 {
-		return 0, false
-	}
-
+// hockeyTimeRemaining returns minutes remaining in the game.
+// CMS tm is cumulative elapsed seconds from game start; remaining = totalGameSec - tm.
+func hockeyTimeRemaining(msg *UpdtMessage) float64 {
 	totalGameSec := 3 * 20 * 60 // 3600s regulation
 	if msg.PC == 4 {
 		totalGameSec += 5 * 60 // +300s OT
@@ -277,36 +270,10 @@ func hockeyTimeFromCMS(msg *UpdtMessage) (float64, bool) {
 			if remain < 0 {
 				remain = 0
 			}
-			return remain, true
+			return remain
 		}
 	}
-	return 0, false
-}
-
-// hockeyTimeFromET computes minutes remaining from ET (per-period countdown).
-func hockeyTimeFromET(pc, et int) float64 {
-	periodLen := 20 * 60
-	if pc == 4 {
-		periodLen = 5 * 60
-	}
-	if et < 0 || et > periodLen {
-		return 0
-	}
-	periodRemain := float64(et) / 60.0
-	switch pc {
-	case 0:
-		return 60.0
-	case 1:
-		return periodRemain + 40.0
-	case 2:
-		return periodRemain + 20.0
-	case 3:
-		return periodRemain
-	case 4:
-		return periodRemain
-	default:
-		return 0
-	}
+	return 60.0
 }
 
 // hockeyPeriodFromCMS derives the current period from the latest CMS entry's p field.

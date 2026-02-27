@@ -147,6 +147,8 @@ func mapPeriod(sport events.Sport, pc int) string {
 			return "Penalties"
 		case 7:
 			return "Break"
+		case 9:
+			return "Penalty Finish" // after extra time (et=7200), before/during penalties
 		case 255:
 			return "Finished"
 		default:

@@ -51,6 +51,8 @@ var HockeyAliases = map[string]string{
 	"ny islanders":       "new york islanders",
 	"mtl":                "montreal canadiens",
 	"cbj":                "columbus blue jackets",
+	"clb":                "columbus blue jackets",
+	"clb blue jackets":   "columbus blue jackets",
 	"bos":                "boston bruins",
 	"st louis blues":     "st. louis blues",
 	"stl blues":          "st. louis blues",

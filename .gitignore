@@ -12,7 +12,7 @@
 
 # Runtime data
 data/
-training/
+/training/
 
 # Logs (order/response output)
 order_log.txt

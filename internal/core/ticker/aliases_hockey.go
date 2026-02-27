@@ -47,6 +47,11 @@ var HockeyAliases = map[string]string{
 	"syr crunch":                     "syracuse crunch",
 
 	// NHL
+	"nyi":                "new york islanders",
+	"ny islanders":       "new york islanders",
+	"mtl":                "montreal canadiens",
+	"cbj":                "columbus blue jackets",
+	"bos":                "boston bruins",
 	"st louis blues":     "st. louis blues",
 	"stl blues":          "st. louis blues",
 	"mon canadiens":      "montreal canadiens",

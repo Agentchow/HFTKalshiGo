@@ -2,6 +2,7 @@ package hockey
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/core/display"
@@ -182,13 +183,16 @@ type edge struct {
 	outcome  string
 	edgeVal  float64
 	modelPct float64
+	side     string // "yes" or "no"
 }
 
 func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
 	var edges []edge
 	for _, e := range []edge{
-		{hs.HomeTicker, "home", hs.EdgeHomeYes, hs.ModelHomePct},
-		{hs.AwayTicker, "away", hs.EdgeAwayYes, hs.ModelAwayPct},
+		{hs.HomeTicker, "home", hs.EdgeHomeYes, hs.ModelHomePct, "yes"},
+		{hs.AwayTicker, "away", hs.EdgeAwayYes, hs.ModelAwayPct, "yes"},
+		{hs.HomeTicker, "home", hs.EdgeHomeNo, 100 - hs.ModelHomePct, "no"},
+		{hs.AwayTicker, "away", hs.EdgeAwayNo, 100 - hs.ModelAwayPct, "no"},
 	} {
 		if e.ticker == "" || e.edgeVal < discrepancyPct {
 			continue
@@ -203,7 +207,17 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 	for _, e := range edges {
 		td := gc.Tickers[e.ticker]
 
-		reason := fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ (+%.1f%%)", e.modelPct, td.YesAsk, e.edgeVal)
+		primarySide := e.side
+		companionSide := "no"
+		if primarySide == "no" {
+			companionSide = "yes"
+		}
+
+		askLabel := td.YesAsk
+		if primarySide == "no" {
+			askLabel = td.NoAsk
+		}
+		reason := fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ %s (+%.1f%%)", e.modelPct, askLabel, strings.ToUpper(primarySide), e.edgeVal)
 
 		intents = append(intents, events.OrderIntent{
 			Sport:     gc.Sport,
@@ -211,7 +225,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 			GameID:    gc.EID,
 			EID:       gc.EID,
 			Ticker:    e.ticker,
-			Side:      "yes",
+			Side:      primarySide,
 			Outcome:   e.outcome,
 			LimitPct:  e.modelPct - 3,
 			Reason:    reason,
@@ -228,7 +242,7 @@ func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.Hockey
 				GameID:    gc.EID,
 				EID:       gc.EID,
 				Ticker:    oppTicker,
-				Side:      "no",
+				Side:      companionSide,
 				Outcome:   oppOutcome,
 				LimitPct:  e.modelPct - 3,
 				Reason:    reason,

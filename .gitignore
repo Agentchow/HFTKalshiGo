@@ -14,6 +14,9 @@
 data/
 training/
 
+# Logs (order/response output)
+order_log.txt
+
 # OS
 .DS_Store
 Thumbs.db

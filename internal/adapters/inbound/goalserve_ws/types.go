@@ -43,7 +43,7 @@ type UpdtMessage struct {
 	CmpName string                     `json:"cmp_name"`
 	T1      WSTeam                     `json:"t1"`
 	T2      WSTeam                     `json:"t2"`
-	ET      int                        `json:"et"`  // elapsed time in seconds
+	ET      int                        `json:"et"`  // soccer: total elapsed sec; hockey: per-period countdown sec remaining
 	STP     int                        `json:"stp"` // 1 = time stopped, 0 = running
 	BL      int                        `json:"bl"`  // 1 = event blocked
 	XY      *string                    `json:"xy"`  // ball position "x,y" or null
@@ -69,7 +69,7 @@ type WSComment struct {
 	ID string `json:"id"`
 	MT string `json:"mt"` // message type code: "255"=goal, "125"=PP start, "129"=PP over, "128"=4on4
 	P  string `json:"p"`  // period
-	TM int    `json:"tm"` // time in seconds
+	TM int    `json:"tm"` // cumulative elapsed seconds from game start (not per-period)
 	N  string `json:"n"`  // text
 	TI string `json:"ti"` // team indicator: "0"=neutral, "1"=home, "2"=away
 }

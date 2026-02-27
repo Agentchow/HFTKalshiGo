@@ -24,6 +24,11 @@ func ParseUpdt(msg *UpdtMessage) *events.Event {
 	}
 
 	period := mapPeriod(sport, msg.PC)
+	if sport == events.SportHockey {
+		if cmsPeriod := hockeyPeriodFromCMS(msg); cmsPeriod != "" {
+			period = cmsPeriod
+		}
+	}
 	if msg.SC != "" && finishStateCodes[msg.SC] {
 		period = "Finished"
 	}
@@ -200,9 +205,11 @@ func mapPeriod(sport events.Sport, pc int) string {
 	return fmt.Sprintf("Period %d", pc)
 }
 
-// calcTimeRemaining computes minutes remaining from period code and elapsed seconds.
-// For soccer: et is total elapsed seconds since kickoff.
-// For hockey: et is often 0 or 1200 (period boundaries); use CMS tm (elapsed sec in period) when available.
+// calcTimeRemaining computes minutes remaining from period code and time fields.
+// Soccer: ET is total elapsed seconds since kickoff.
+// Hockey: CMS tm is cumulative elapsed seconds from game start — remaining is
+// simply (totalGameSec - tm). Falls back to ET (per-period countdown).
+// Football: ET is total elapsed seconds.
 func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 	pc, et := msg.PC, msg.ET
 	switch sport {
@@ -229,31 +236,10 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 			return 0
 		}
 	case events.SportHockey:
-		// ET is seconds remaining in period (countdown). Often 0 or 1200 at boundaries.
-		// CMS tm is elapsed seconds in period when the event occurred — use it when ET is uninformative.
-		elapsedInPeriod := hockeyElapsedInPeriod(msg)
-		periodLenSec := 20 * 60 // 20 min regulation period
-		if pc == 4 {
-			periodLenSec = 5 * 60 // OT
+		if remain, ok := hockeyTimeFromCMS(msg); ok {
+			return remain
 		}
-		periodRemain := float64(periodLenSec-elapsedInPeriod) / 60.0
-		if periodRemain < 0 {
-			periodRemain = 0
-		}
-		switch pc {
-		case 0:
-			return 60.0
-		case 1:
-			return periodRemain + 40.0
-		case 2:
-			return periodRemain + 20.0
-		case 3:
-			return periodRemain
-		case 4:
-			return periodRemain
-		default:
-			return 0
-		}
+		return hockeyTimeFromET(pc, et)
 	case events.SportFootball:
 		totalGame := 60.0 // 4 x 15 min quarters
 		remain := totalGame - float64(et)/60.0
@@ -272,27 +258,76 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 	return 0
 }
 
-// hockeyElapsedInPeriod returns elapsed seconds in the current period.
-// Prefers CMS tm (elapsed sec when event occurred) when available; else ET (countdown).
-func hockeyElapsedInPeriod(msg *UpdtMessage) int {
-	periodLen := 20 * 60
-	if msg.PC == 4 {
-		periodLen = 5 * 60
+// hockeyTimeFromCMS returns minutes remaining using the latest CMS entry.
+// CMS tm is cumulative elapsed seconds from game start (regulation = 3600s, OT = 3900s).
+func hockeyTimeFromCMS(msg *UpdtMessage) (float64, bool) {
+	if len(msg.CMS) == 0 {
+		return 0, false
 	}
-	// CMS tm: elapsed seconds in period when the comment/event occurred.
-	if len(msg.CMS) > 0 {
-		for i := len(msg.CMS) - 1; i >= 0; i-- {
-			tm := msg.CMS[i].TM
-			if tm > 0 && tm < periodLen {
-				return tm
+
+	totalGameSec := 3 * 20 * 60 // 3600s regulation
+	if msg.PC == 4 {
+		totalGameSec += 5 * 60 // +300s OT
+	}
+
+	for i := len(msg.CMS) - 1; i >= 0; i-- {
+		tm := msg.CMS[i].TM
+		if tm > 0 && tm <= totalGameSec {
+			remain := float64(totalGameSec-tm) / 60.0
+			if remain < 0 {
+				remain = 0
 			}
+			return remain, true
 		}
 	}
-	// Fallback: ET is countdown (sec remaining). elapsed = periodLen - ET.
-	if msg.ET >= 0 && msg.ET <= periodLen {
-		return periodLen - msg.ET
+	return 0, false
+}
+
+// hockeyTimeFromET computes minutes remaining from ET (per-period countdown).
+func hockeyTimeFromET(pc, et int) float64 {
+	periodLen := 20 * 60
+	if pc == 4 {
+		periodLen = 5 * 60
 	}
-	return 0
+	if et < 0 || et > periodLen {
+		return 0
+	}
+	periodRemain := float64(et) / 60.0
+	switch pc {
+	case 0:
+		return 60.0
+	case 1:
+		return periodRemain + 40.0
+	case 2:
+		return periodRemain + 20.0
+	case 3:
+		return periodRemain
+	case 4:
+		return periodRemain
+	default:
+		return 0
+	}
+}
+
+// hockeyPeriodFromCMS derives the current period from the latest CMS entry's p field.
+func hockeyPeriodFromCMS(msg *UpdtMessage) string {
+	if len(msg.CMS) == 0 {
+		return ""
+	}
+	p := msg.CMS[len(msg.CMS)-1].P
+	switch p {
+	case "1":
+		return "1st Period"
+	case "2":
+		return "2nd Period"
+	case "3":
+		return "3rd Period"
+	case "4":
+		return "OVERTIME"
+	case "5":
+		return "Shootout"
+	}
+	return ""
 }
 
 func parseStartTime(st json.Number) int64 {

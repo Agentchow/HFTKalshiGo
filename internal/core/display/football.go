@@ -45,7 +45,7 @@ func PrintFootball(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "  %s @ %s\n", fs.AwayTeam, fs.HomeTeam)
 	fmt.Fprintf(&b, "    %-38s%s %.1f%%  |  %s %.1f%%\n",
 		"Pregame strength (Goalserve):", homeShort, fs.HomePregameStrength*100, awayShort, fs.AwayPregameStrength*100)
-	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Quarter %s (~%.0f min left)\n",
+	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Quarter %s (%.0f min left)\n",
 		"Score & time (Goalserve):", fs.HomeScore, fs.AwayScore, fs.Quarter, fs.TimeLeft)
 	if fs.HomeTicker != "" {
 		fmt.Fprintf(&b, "    Kalshi  %-28sYes %2.0fc  |  No %2.0fc\n", homeShort+":", homeYes, homeNo)

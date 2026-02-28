@@ -118,24 +118,26 @@ func (s *Store) Insert(sport events.Sport, raw []byte) {
 // Must be called with s.mu held.
 func (s *Store) evict() {
 	for s.cachedSize > maxStoreBytes {
-		var freed int64
+		var freed, maxID int64
 		err := s.db.QueryRow(
-			`WITH deleted AS (
-				DELETE FROM webhook_payloads
-				WHERE id IN (SELECT id FROM webhook_payloads ORDER BY id ASC LIMIT ?)
-				RETURNING byte_size
-			)
-			SELECT COALESCE(SUM(byte_size), 0) FROM deleted`,
+			`SELECT COALESCE(SUM(byte_size), 0), COALESCE(MAX(id), 0)
+			 FROM (SELECT id, byte_size FROM webhook_payloads ORDER BY id ASC LIMIT ?)`,
 			evictBatchSize,
-		).Scan(&freed)
+		).Scan(&freed, &maxID)
 		if err != nil {
-			telemetry.Warnf("webhook store: eviction query failed: %v", err)
+			telemetry.Warnf("webhook store: eviction select failed: %v", err)
 			break
 		}
-		if freed == 0 {
-			telemetry.Warnf("webhook store: eviction freed 0 bytes, cachedSize=%d", s.cachedSize)
+		if freed == 0 || maxID == 0 {
+			telemetry.Warnf("webhook store: eviction found nothing to delete, cachedSize=%d", s.cachedSize)
 			break
 		}
+
+		if _, err := s.db.Exec(`DELETE FROM webhook_payloads WHERE id <= ?`, maxID); err != nil {
+			telemetry.Warnf("webhook store: eviction delete failed: %v", err)
+			break
+		}
+
 		s.cachedSize -= freed
 		s.evictCounter++
 

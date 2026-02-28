@@ -158,14 +158,13 @@ func (h *HockeyState) RecalcEdge(tickers map[string]*game.TickerData) {
 	h.EdgeAwayNo = edgeFor(100-h.ModelAwayPct, noAsk(tickers, h.AwayTicker))
 }
 
-const significantEdgePct = 3.0
-
 func (h *HockeyState) HasSignificantEdge() bool {
+	t := game.EdgeThresholdPct()
 	for _, e := range []float64{
 		h.EdgeHomeYes, h.EdgeAwayYes,
 		h.EdgeHomeNo, h.EdgeAwayNo,
 	} {
-		if e >= significantEdgePct {
+		if e >= t {
 			return true
 		}
 	}

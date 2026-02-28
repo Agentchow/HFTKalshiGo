@@ -65,7 +65,9 @@ func (f *FootballState) GetTimeRemaining() float64 { return f.TimeLeft }
 func (f *FootballState) HasLIVEData() bool         { return f.hasLIVEData }
 func (f *FootballState) HasPregame() bool          { return true }
 
-func (f *FootballState) DeduplicateStatus(status events.MatchStatus) events.MatchStatus { return status }
+func (f *FootballState) DeduplicateStatus(status events.MatchStatus) events.MatchStatus {
+	return status
+}
 
 func (f *FootballState) Lead() int { return f.HomeScore - f.AwayScore }
 

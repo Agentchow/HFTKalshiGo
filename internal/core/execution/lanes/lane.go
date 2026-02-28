@@ -41,8 +41,8 @@ const (
 )
 
 // Check returns the reason an order would be blocked, or RejectNone if allowed.
-func (l *Lane) Check(ticker string, homeScore, awayScore int, orderCents int) Reject {
-	key := l.idempotent.Key(ticker, homeScore, awayScore)
+func (l *Lane) Check(ticker, side string, homeScore, awayScore int, orderCents int) Reject {
+	key := l.idempotent.Key(ticker, side, homeScore, awayScore)
 	if l.idempotent.HasSeen(key) {
 		return RejectDuplicate
 	}
@@ -62,17 +62,17 @@ func (l *Lane) SportMax() int64 {
 	return l.spend.maxCents
 }
 
-// RecordOrder marks that an order was placed for this ticker+score combo
+// RecordOrder marks that an order was placed for this ticker+side+score combo
 // and records the spending against the sport-level cap.
-func (l *Lane) RecordOrder(ticker string, homeScore, awayScore int, orderCents int) {
-	key := l.idempotent.Key(ticker, homeScore, awayScore)
+func (l *Lane) RecordOrder(ticker, side string, homeScore, awayScore int, orderCents int) {
+	key := l.idempotent.Key(ticker, side, homeScore, awayScore)
 	l.idempotent.Record(key)
 	l.spend.Record(orderCents)
 }
 
 // IdempotencyKey returns the dedup key for external use.
-func (l *Lane) IdempotencyKey(ticker string, homeScore, awayScore int) string {
-	return l.idempotent.Key(ticker, homeScore, awayScore)
+func (l *Lane) IdempotencyKey(ticker, side string, homeScore, awayScore int) string {
+	return l.idempotent.Key(ticker, side, homeScore, awayScore)
 }
 
 // ClearIdempotency resets all dedup state.

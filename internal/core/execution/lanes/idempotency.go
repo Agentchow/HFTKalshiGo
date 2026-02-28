@@ -18,9 +18,9 @@ func NewIdempotencyGuard() *IdempotencyGuard {
 	}
 }
 
-// Key builds a dedup key from ticker and current score.
-func (g *IdempotencyGuard) Key(ticker string, homeScore, awayScore int) string {
-	return fmt.Sprintf("%s:%d-%d", ticker, homeScore, awayScore)
+// Key builds a dedup key from ticker, side, and current score.
+func (g *IdempotencyGuard) Key(ticker, side string, homeScore, awayScore int) string {
+	return fmt.Sprintf("%s:%s:%d-%d", ticker, side, homeScore, awayScore)
 }
 
 func (g *IdempotencyGuard) HasSeen(key string) bool {

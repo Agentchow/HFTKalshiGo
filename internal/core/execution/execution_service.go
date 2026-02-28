@@ -106,14 +106,14 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 			}
 		}
 
-		reason := lane.Check(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
+		reason := lane.Check(intent.Ticker, intent.Side, intent.HomeScore, intent.AwayScore, orderCents)
 		if reason != "" && !(intent.Slam && reason == lanes.RejectDuplicate) {
 			telemetry.Infof("[RISK-LIMIT] %s — %s (score %d-%d)",
 				matchLabel, reason, intent.HomeScore, intent.AwayScore)
 			continue
 		}
 
-		lane.RecordOrder(intent.Ticker, intent.HomeScore, intent.AwayScore, orderCents)
+		lane.RecordOrder(intent.Ticker, intent.Side, intent.HomeScore, intent.AwayScore, orderCents)
 		approved = append(approved, intent)
 	}
 

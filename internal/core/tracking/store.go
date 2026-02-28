@@ -64,6 +64,22 @@ func OpenStore(path string) (*Store, error) {
 	for _, col := range []string{"home_order_id", "away_order_id", "draw_order_id"} {
 		db.Exec(fmt.Sprintf(`ALTER TABLE batch_orders ADD COLUMN %s TEXT`, col))
 	}
+	for _, col := range []string{
+		"home_yes_order_id TEXT", "home_yes_ticker TEXT", "home_yes_limit_cents INTEGER",
+		"home_yes_cost_cents INTEGER", "home_yes_fill_count INTEGER", "home_yes_total_count INTEGER",
+		"home_no_order_id TEXT", "home_no_ticker TEXT", "home_no_limit_cents INTEGER",
+		"home_no_cost_cents INTEGER", "home_no_fill_count INTEGER", "home_no_total_count INTEGER",
+		"away_yes_order_id TEXT", "away_yes_ticker TEXT", "away_yes_limit_cents INTEGER",
+		"away_yes_cost_cents INTEGER", "away_yes_fill_count INTEGER", "away_yes_total_count INTEGER",
+		"away_no_order_id TEXT", "away_no_ticker TEXT", "away_no_limit_cents INTEGER",
+		"away_no_cost_cents INTEGER", "away_no_fill_count INTEGER", "away_no_total_count INTEGER",
+		"draw_yes_order_id TEXT", "draw_yes_ticker TEXT", "draw_yes_limit_cents INTEGER",
+		"draw_yes_cost_cents INTEGER", "draw_yes_fill_count INTEGER", "draw_yes_total_count INTEGER",
+		"draw_no_order_id TEXT", "draw_no_ticker TEXT", "draw_no_limit_cents INTEGER",
+		"draw_no_cost_cents INTEGER", "draw_no_fill_count INTEGER", "draw_no_total_count INTEGER",
+	} {
+		db.Exec(fmt.Sprintf(`ALTER TABLE batch_orders ADD COLUMN %s`, col))
+	}
 
 	var size int64
 	db.QueryRow(`SELECT COALESCE(page_count * page_size, 0) FROM pragma_page_count(), pragma_page_size()`).Scan(&size)
@@ -141,34 +157,52 @@ func (s *Store) InsertBatch(b *BatchOrderContext) (int64, error) {
 		`INSERT INTO batch_orders (
 			eid, sport, league, home_team, away_team, order_type, placed_at,
 			home_score, away_score, period, time_left,
-			home_order_id, home_ticker, home_side, home_limit_cents, home_cost_cents, home_fill_count, home_total_count,
-			away_order_id, away_ticker, away_side, away_limit_cents, away_cost_cents, away_fill_count, away_total_count,
-			draw_order_id, draw_ticker, draw_side, draw_limit_cents, draw_cost_cents, draw_fill_count, draw_total_count
-		) VALUES (?,?,?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?,?, ?,?,?,?,?,?,?, ?,?,?,?,?,?,?)`,
+			home_yes_order_id, home_yes_ticker, home_yes_limit_cents, home_yes_cost_cents, home_yes_fill_count, home_yes_total_count,
+			home_no_order_id,  home_no_ticker,  home_no_limit_cents,  home_no_cost_cents,  home_no_fill_count,  home_no_total_count,
+			away_yes_order_id, away_yes_ticker, away_yes_limit_cents, away_yes_cost_cents, away_yes_fill_count, away_yes_total_count,
+			away_no_order_id,  away_no_ticker,  away_no_limit_cents,  away_no_cost_cents,  away_no_fill_count,  away_no_total_count,
+			draw_yes_order_id, draw_yes_ticker, draw_yes_limit_cents, draw_yes_cost_cents, draw_yes_fill_count, draw_yes_total_count,
+			draw_no_order_id,  draw_no_ticker,  draw_no_limit_cents,  draw_no_cost_cents,  draw_no_fill_count,  draw_no_total_count
+		) VALUES (?,?,?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?)`,
 		b.GameEID, b.Sport, b.League, b.HomeTeam, b.AwayTeam, b.OrderType,
 		b.PlacedAt.UTC().Format(time.RFC3339Nano),
 		b.HomeScore, b.AwayScore, b.Period, b.TimeLeft,
-		outcomeStr(b.Home, func(o *OutcomeOrder) string { return o.OrderID }),
-		outcomeStr(b.Home, func(o *OutcomeOrder) string { return o.Ticker }),
-		outcomeStr(b.Home, func(o *OutcomeOrder) string { return o.Side }),
-		outcomeInt(b.Home, func(o *OutcomeOrder) int { return o.LimitCents }),
-		outcomeInt(b.Home, func(o *OutcomeOrder) int { return o.CostCents }),
-		outcomeInt(b.Home, func(o *OutcomeOrder) int { return o.FillCount }),
-		outcomeInt(b.Home, func(o *OutcomeOrder) int { return o.TotalCount }),
-		outcomeStr(b.Away, func(o *OutcomeOrder) string { return o.OrderID }),
-		outcomeStr(b.Away, func(o *OutcomeOrder) string { return o.Ticker }),
-		outcomeStr(b.Away, func(o *OutcomeOrder) string { return o.Side }),
-		outcomeInt(b.Away, func(o *OutcomeOrder) int { return o.LimitCents }),
-		outcomeInt(b.Away, func(o *OutcomeOrder) int { return o.CostCents }),
-		outcomeInt(b.Away, func(o *OutcomeOrder) int { return o.FillCount }),
-		outcomeInt(b.Away, func(o *OutcomeOrder) int { return o.TotalCount }),
-		outcomeStr(b.Draw, func(o *OutcomeOrder) string { return o.OrderID }),
-		outcomeStr(b.Draw, func(o *OutcomeOrder) string { return o.Ticker }),
-		outcomeStr(b.Draw, func(o *OutcomeOrder) string { return o.Side }),
-		outcomeInt(b.Draw, func(o *OutcomeOrder) int { return o.LimitCents }),
-		outcomeInt(b.Draw, func(o *OutcomeOrder) int { return o.CostCents }),
-		outcomeInt(b.Draw, func(o *OutcomeOrder) int { return o.FillCount }),
-		outcomeInt(b.Draw, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.HomeYes, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.HomeYes, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.HomeYes, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.HomeYes, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.HomeYes, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.HomeYes, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.HomeNo, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.HomeNo, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.HomeNo, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.HomeNo, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.HomeNo, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.HomeNo, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.AwayYes, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.AwayYes, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.AwayYes, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.AwayYes, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.AwayYes, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.AwayYes, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.AwayNo, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.AwayNo, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.AwayNo, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.AwayNo, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.AwayNo, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.AwayNo, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.DrawYes, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.DrawYes, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.DrawYes, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.DrawYes, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.DrawYes, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.DrawYes, func(o *OutcomeOrder) int { return o.TotalCount }),
+		ooStr(b.DrawNo, func(o *OutcomeOrder) string { return o.OrderID }),
+		ooStr(b.DrawNo, func(o *OutcomeOrder) string { return o.Ticker }),
+		ooInt(b.DrawNo, func(o *OutcomeOrder) int { return o.LimitCents }),
+		ooInt(b.DrawNo, func(o *OutcomeOrder) int { return o.CostCents }),
+		ooInt(b.DrawNo, func(o *OutcomeOrder) int { return o.FillCount }),
+		ooInt(b.DrawNo, func(o *OutcomeOrder) int { return o.TotalCount }),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert batch order: %w", err)
@@ -207,36 +241,37 @@ func (s *Store) UpdateFollowUpPrices(rowID int64, checkpoint string, snap PriceS
 
 // UpdateFinalFill overwrites the cost/fill columns for one outcome leg
 // after polling the Kalshi GetOrder endpoint for final fill status.
-func (s *Store) UpdateFinalFill(rowID int64, outcome, orderID string, costCents, fillCount, totalCount int) {
+func (s *Store) UpdateFinalFill(rowID int64, outcomeKey, orderID string, costCents, fillCount, totalCount int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var query string
-	switch outcome {
-	case "home":
-		query = `UPDATE batch_orders SET home_order_id=?, home_cost_cents=?, home_fill_count=?, home_total_count=? WHERE id=?`
-	case "away":
-		query = `UPDATE batch_orders SET away_order_id=?, away_cost_cents=?, away_fill_count=?, away_total_count=? WHERE id=?`
-	case "draw":
-		query = `UPDATE batch_orders SET draw_order_id=?, draw_cost_cents=?, draw_fill_count=?, draw_total_count=? WHERE id=?`
-	default:
+	colMap := map[string]string{
+		"home_yes": "home_yes", "home_no": "home_no",
+		"away_yes": "away_yes", "away_no": "away_no",
+		"draw_yes": "draw_yes", "draw_no": "draw_no",
+	}
+	prefix, ok := colMap[outcomeKey]
+	if !ok {
 		return
 	}
 
+	query := fmt.Sprintf(`UPDATE batch_orders SET %s_order_id=?, %s_cost_cents=?, %s_fill_count=?, %s_total_count=? WHERE id=?`,
+		prefix, prefix, prefix, prefix)
+
 	if _, err := s.db.Exec(query, orderID, costCents, fillCount, totalCount, rowID); err != nil {
-		telemetry.Warnf("tracking: update final fill %s (row %d): %v", outcome, rowID, err)
+		telemetry.Warnf("tracking: update final fill %s (row %d): %v", outcomeKey, rowID, err)
 	}
 }
 
 // batchRow is the subset of columns needed for settlement P&L calculation.
 type batchRow struct {
-	ID            int64
-	HomeCostCents sql.NullInt64
-	HomeSide      sql.NullString
-	AwayCostCents sql.NullInt64
-	AwaySide      sql.NullString
-	DrawCostCents sql.NullInt64
-	DrawSide      sql.NullString
+	ID           int64
+	HomeYesCost  sql.NullInt64
+	HomeNoCost   sql.NullInt64
+	AwayYesCost  sql.NullInt64
+	AwayNoCost   sql.NullInt64
+	DrawYesCost  sql.NullInt64
+	DrawNoCost   sql.NullInt64
 }
 
 // UnsettledForEID returns all batch orders for a game that lack a final outcome.
@@ -245,7 +280,10 @@ func (s *Store) UnsettledForEID(eid string) ([]batchRow, error) {
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(
-		`SELECT id, home_cost_cents, home_side, away_cost_cents, away_side, draw_cost_cents, draw_side
+		`SELECT id,
+			home_yes_cost_cents, home_no_cost_cents,
+			away_yes_cost_cents, away_no_cost_cents,
+			draw_yes_cost_cents, draw_no_cost_cents
 		 FROM batch_orders WHERE eid = ? AND final_outcome IS NULL`, eid)
 	if err != nil {
 		return nil, err
@@ -255,7 +293,11 @@ func (s *Store) UnsettledForEID(eid string) ([]batchRow, error) {
 	var out []batchRow
 	for rows.Next() {
 		var r batchRow
-		if err := rows.Scan(&r.ID, &r.HomeCostCents, &r.HomeSide, &r.AwayCostCents, &r.AwaySide, &r.DrawCostCents, &r.DrawSide); err != nil {
+		if err := rows.Scan(&r.ID,
+			&r.HomeYesCost, &r.HomeNoCost,
+			&r.AwayYesCost, &r.AwayNoCost,
+			&r.DrawYesCost, &r.DrawNoCost,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -324,14 +366,14 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func outcomeStr(o *OutcomeOrder, fn func(*OutcomeOrder) string) any {
+func ooStr(o *OutcomeOrder, fn func(*OutcomeOrder) string) any {
 	if o == nil {
 		return nil
 	}
 	return fn(o)
 }
 
-func outcomeInt(o *OutcomeOrder, fn func(*OutcomeOrder) int) any {
+func ooInt(o *OutcomeOrder, fn func(*OutcomeOrder) int) any {
 	if o == nil {
 		return nil
 	}

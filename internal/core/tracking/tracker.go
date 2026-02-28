@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/adapters/outbound/kalshi_http"
@@ -37,9 +38,12 @@ type BatchOrderContext struct {
 	Period    string
 	TimeLeft  string
 
-	Home *OutcomeOrder // nil if no order on home ticker
-	Away *OutcomeOrder
-	Draw *OutcomeOrder // soccer only
+	HomeYes *OutcomeOrder
+	HomeNo  *OutcomeOrder
+	AwayYes *OutcomeOrder
+	AwayNo  *OutcomeOrder
+	DrawYes *OutcomeOrder // soccer only
+	DrawNo  *OutcomeOrder // soccer only
 
 	Prices1s  *PriceSnapshot
 	Prices5s  *PriceSnapshot
@@ -94,6 +98,10 @@ func (t *Tracker) RecordBatch(
 		return
 	}
 
+	if strings.HasPrefix(intents[0].EID, "MOCK-") {
+		return
+	}
+
 	orderType := "regular"
 	if intents[0].Slam {
 		orderType = "slam"
@@ -134,17 +142,23 @@ func (t *Tracker) RecordBatch(
 			TotalCount: o.FillCount + o.RemainingCount,
 		}
 
-		switch intent.Outcome {
-		case "home":
-			boc.Home = oo
-		case "away":
-			boc.Away = oo
-		case "draw":
-			boc.Draw = oo
+		switch intent.Outcome + "_" + intent.Side {
+		case "home_yes":
+			boc.HomeYes = oo
+		case "home_no":
+			boc.HomeNo = oo
+		case "away_yes":
+			boc.AwayYes = oo
+		case "away_no":
+			boc.AwayNo = oo
+		case "draw_yes":
+			boc.DrawYes = oo
+		case "draw_no":
+			boc.DrawNo = oo
 		}
 	}
 
-	if boc.Home == nil && boc.Away == nil && boc.Draw == nil {
+	if boc.HomeYes == nil && boc.HomeNo == nil && boc.AwayYes == nil && boc.AwayNo == nil && boc.DrawYes == nil && boc.DrawNo == nil {
 		return
 	}
 
@@ -155,7 +169,7 @@ func (t *Tracker) RecordBatch(
 	}
 	boc.ID = rowID
 
-	telemetry.Infof("[TRACKING] batch #%d recorded for %s vs %s (eid=%s, type=%s)",
+	telemetry.Debugf("[TRACKING] batch #%d recorded for %s vs %s (eid=%s, type=%s)",
 		rowID, boc.HomeTeam, boc.AwayTeam, boc.GameEID, boc.OrderType)
 
 	go t.captureFollowUpPrices(gc, boc)
@@ -194,22 +208,35 @@ func (t *Tracker) captureFollowUpPrices(gc *game.GameContext, boc *BatchOrderCon
 // Must be called from the game's goroutine (inside gc.Send).
 func readPriceSnapshot(gc *game.GameContext, boc *BatchOrderContext) PriceSnapshot {
 	snap := PriceSnapshot{}
-	if boc.Home != nil {
-		if td := gc.Tickers[boc.Home.Ticker]; td != nil {
+	homeTicker := tickerFrom(boc.HomeYes, boc.HomeNo)
+	awayTicker := tickerFrom(boc.AwayYes, boc.AwayNo)
+	drawTicker := tickerFrom(boc.DrawYes, boc.DrawNo)
+	if homeTicker != "" {
+		if td := gc.Tickers[homeTicker]; td != nil {
 			snap.HomeYesAsk = td.YesAsk
 		}
 	}
-	if boc.Away != nil {
-		if td := gc.Tickers[boc.Away.Ticker]; td != nil {
+	if awayTicker != "" {
+		if td := gc.Tickers[awayTicker]; td != nil {
 			snap.AwayYesAsk = td.YesAsk
 		}
 	}
-	if boc.Draw != nil {
-		if td := gc.Tickers[boc.Draw.Ticker]; td != nil {
+	if drawTicker != "" {
+		if td := gc.Tickers[drawTicker]; td != nil {
 			snap.DrawYesAsk = td.YesAsk
 		}
 	}
 	return snap
+}
+
+func tickerFrom(a, b *OutcomeOrder) string {
+	if a != nil {
+		return a.Ticker
+	}
+	if b != nil {
+		return b.Ticker
+	}
+	return ""
 }
 
 // backfillFills waits for orders to expire (TTL + 5s buffer), then polls
@@ -273,14 +300,14 @@ func (t *Tracker) waitForBudget(batchID int64) bool {
 
 func collectOrderIDs(boc *BatchOrderContext) map[string]string {
 	ids := make(map[string]string)
-	if boc.Home != nil && boc.Home.OrderID != "" {
-		ids["home"] = boc.Home.OrderID
-	}
-	if boc.Away != nil && boc.Away.OrderID != "" {
-		ids["away"] = boc.Away.OrderID
-	}
-	if boc.Draw != nil && boc.Draw.OrderID != "" {
-		ids["draw"] = boc.Draw.OrderID
+	for key, oo := range map[string]*OutcomeOrder{
+		"home_yes": boc.HomeYes, "home_no": boc.HomeNo,
+		"away_yes": boc.AwayYes, "away_no": boc.AwayNo,
+		"draw_yes": boc.DrawYes, "draw_no": boc.DrawNo,
+	} {
+		if oo != nil && oo.OrderID != "" {
+			ids[key] = oo.OrderID
+		}
 	}
 	return ids
 }
@@ -328,9 +355,12 @@ func (t *Tracker) OnGameEvent(gc *game.GameContext, eventType string) {
 // at 100 cents, otherwise 0. P&L = settlement_value - cost.
 func computePnL(r batchRow, outcome string) int {
 	pnl := 0
-	pnl += legPnL(r.HomeCostCents, r.HomeSide, "home", outcome)
-	pnl += legPnL(r.AwayCostCents, r.AwaySide, "away", outcome)
-	pnl += legPnL(r.DrawCostCents, r.DrawSide, "draw", outcome)
+	pnl += legPnL(r.HomeYesCost, "yes", "home", outcome)
+	pnl += legPnL(r.HomeNoCost, "no", "home", outcome)
+	pnl += legPnL(r.AwayYesCost, "yes", "away", outcome)
+	pnl += legPnL(r.AwayNoCost, "no", "away", outcome)
+	pnl += legPnL(r.DrawYesCost, "yes", "draw", outcome)
+	pnl += legPnL(r.DrawNoCost, "no", "draw", outcome)
 	return pnl
 }
 
@@ -338,8 +368,8 @@ func computePnL(r batchRow, outcome string) int {
 //
 // A YES buy on the winning outcome settles at 100. A NO buy on a losing
 // outcome also settles at 100 (you bought NO on a team that lost = correct).
-func legPnL(costCents sql.NullInt64, side sql.NullString, legOutcome, gameOutcome string) int {
-	if !costCents.Valid || !side.Valid {
+func legPnL(costCents sql.NullInt64, side, legOutcome, gameOutcome string) int {
+	if !costCents.Valid {
 		return 0
 	}
 	cost := int(costCents.Int64)
@@ -348,7 +378,7 @@ func legPnL(costCents sql.NullInt64, side sql.NullString, legOutcome, gameOutcom
 	}
 
 	won := false
-	switch side.String {
+	switch side {
 	case "yes":
 		won = (legOutcome == gameOutcome)
 	case "no":

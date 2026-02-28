@@ -2,7 +2,6 @@ package hockey
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charleschow/hft-trading/internal/core/display"
@@ -12,8 +11,6 @@ import (
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
-
-const discrepancyPct = 3.0 // minimum model-vs-Kalshi spread (%) to trigger an order
 
 // Strategy implements the hockey-specific trading logic.
 // Pregame odds are applied by the engine at initialization time —
@@ -88,13 +85,14 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	s.computeModel(hs)
 	hs.RecalcEdge(gc.Tickers)
 
-	if !scoreChanged && !overturn {
-		return strategy.EvalResult{}
+	// Build orders if the score changed or overturn occurred, and there is a significant edge.
+	if (scoreChanged || overturn) && hs.HasSignificantEdge() {
+		return strategy.EvalResult{
+			Intents: s.buildOrderIntents(gc, hs, overturn),
+		}
 	}
 
-	return strategy.EvalResult{
-		Intents: s.buildOrderIntent(gc, hs, s.findEdges(hs), overturn),
-	}
+	return strategy.EvalResult{}
 }
 
 func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []events.OrderIntent {
@@ -179,91 +177,51 @@ func (s *Strategy) updatePowerPlay(gc *game.GameContext, hs *hockeyState.HockeyS
 	}
 }
 
-type edge struct {
-	ticker   string
-	outcome  string
-	edgeVal  float64
-	modelPct float64
-	side     string // "yes" or "no"
-}
-
-func (s *Strategy) findEdges(hs *hockeyState.HockeyState) []edge {
-	var edges []edge
-	for _, e := range []edge{
-		{hs.HomeTicker, "home", hs.EdgeHomeYes, hs.ModelHomePct, "yes"},
-		{hs.AwayTicker, "away", hs.EdgeAwayYes, hs.ModelAwayPct, "yes"},
-		{hs.HomeTicker, "home", hs.EdgeHomeNo, 100 - hs.ModelHomePct, "no"},
-		{hs.AwayTicker, "away", hs.EdgeAwayNo, 100 - hs.ModelAwayPct, "no"},
-	} {
-		if e.ticker == "" || e.edgeVal < discrepancyPct {
-			continue
-		}
-		edges = append(edges, e)
-	}
-	return edges
-}
-
-func (s *Strategy) buildOrderIntent(gc *game.GameContext, hs *hockeyState.HockeyState, edges []edge, overturn bool) []events.OrderIntent {
+// buildOrderIntents fires 4 orders covering all markets when a score change
+// (or confirmed overturn) occurs and at least one significant edge exists.
+func (s *Strategy) buildOrderIntents(gc *game.GameContext, hs *hockeyState.HockeyState, overturn bool) []events.OrderIntent {
 	var intents []events.OrderIntent
-	for _, e := range edges {
-		td := gc.Tickers[e.ticker]
+	t := game.EdgeThresholdPct()
 
-		primarySide := e.side
-		companionSide := "no"
-		if primarySide == "no" {
-			companionSide = "yes"
-		}
-
-		askLabel := td.YesAsk
-		if primarySide == "no" {
-			askLabel = td.NoAsk
-		}
-		reason := fmt.Sprintf("model %.1f%% vs kalshi %.0f¢ %s (+%.1f%%)", e.modelPct, askLabel, strings.ToUpper(primarySide), e.edgeVal)
-
-		intents = append(intents, events.OrderIntent{
-			Sport:     gc.Sport,
-			League:    gc.League,
-			GameID:    gc.EID,
-			EID:       gc.EID,
-			Ticker:    e.ticker,
-			Side:      primarySide,
-			Outcome:   e.outcome,
-			LimitPct:  e.modelPct - 3,
-			Reason:    reason,
-			HomeScore: hs.HomeScore,
-			AwayScore: hs.AwayScore,
-			Overturn:  overturn,
-		})
-
-		oppTicker, oppOutcome := s.oppositeSide(hs, e.outcome)
-		if oppTicker != "" {
-			intents = append(intents, events.OrderIntent{
-				Sport:     gc.Sport,
-				League:    gc.League,
-				GameID:    gc.EID,
-				EID:       gc.EID,
-				Ticker:    oppTicker,
-				Side:      companionSide,
-				Outcome:   oppOutcome,
-				LimitPct:  e.modelPct - 3,
-				Reason:    reason,
-				HomeScore: hs.HomeScore,
-				AwayScore: hs.AwayScore,
-				Overturn:  overturn,
-			})
-		}
+	if hs.HomeTicker != "" {
+		intents = append(intents,
+			events.OrderIntent{
+				Sport: gc.Sport, League: gc.League, GameID: gc.EID, EID: gc.EID,
+				Ticker: hs.HomeTicker, Side: "yes", Outcome: "home",
+				LimitPct:  hs.ModelHomePct - t,
+				Reason:    fmt.Sprintf("model %.1f%% YES", hs.ModelHomePct),
+				HomeScore: hs.HomeScore, AwayScore: hs.AwayScore, Overturn: overturn,
+			},
+			events.OrderIntent{
+				Sport: gc.Sport, League: gc.League, GameID: gc.EID, EID: gc.EID,
+				Ticker: hs.HomeTicker, Side: "no", Outcome: "home",
+				LimitPct:  (100 - hs.ModelHomePct) - t,
+				Reason:    fmt.Sprintf("model %.1f%% NO", 100-hs.ModelHomePct),
+				HomeScore: hs.HomeScore, AwayScore: hs.AwayScore, Overturn: overturn,
+			},
+		)
 	}
+
+	if hs.AwayTicker != "" {
+		intents = append(intents,
+			events.OrderIntent{
+				Sport: gc.Sport, League: gc.League, GameID: gc.EID, EID: gc.EID,
+				Ticker: hs.AwayTicker, Side: "yes", Outcome: "away",
+				LimitPct:  hs.ModelAwayPct - t,
+				Reason:    fmt.Sprintf("model %.1f%% YES", hs.ModelAwayPct),
+				HomeScore: hs.HomeScore, AwayScore: hs.AwayScore, Overturn: overturn,
+			},
+			events.OrderIntent{
+				Sport: gc.Sport, League: gc.League, GameID: gc.EID, EID: gc.EID,
+				Ticker: hs.AwayTicker, Side: "no", Outcome: "away",
+				LimitPct:  (100 - hs.ModelAwayPct) - t,
+				Reason:    fmt.Sprintf("model %.1f%% NO", 100-hs.ModelAwayPct),
+				HomeScore: hs.HomeScore, AwayScore: hs.AwayScore, Overturn: overturn,
+			},
+		)
+	}
+
 	return intents
-}
-
-func (s *Strategy) oppositeSide(hs *hockeyState.HockeyState, outcome string) (ticker, oppOutcome string) {
-	if outcome == "home" && hs.AwayTicker != "" {
-		return hs.AwayTicker, "away"
-	}
-	if outcome == "away" && hs.HomeTicker != "" {
-		return hs.HomeTicker, "home"
-	}
-	return "", ""
 }
 
 func (s *Strategy) slamOrders(gc *game.GameContext, hs *hockeyState.HockeyState, gu *events.GameUpdateEvent) []events.OrderIntent {

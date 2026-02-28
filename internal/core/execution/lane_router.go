@@ -10,15 +10,36 @@ import (
 
 // LaneRouter maps (sport, league) to a dedicated execution lane.
 // Each lane has its own risk limits and idempotency state.
+const defaultOrderTTL = 60
+
 type LaneRouter struct {
-	mu    sync.RWMutex
-	lanes map[string]*lanes.Lane // "hockey:ahl" -> Lane
+	mu       sync.RWMutex
+	lanes    map[string]*lanes.Lane  // "hockey:ahl" -> Lane
+	sportTTL map[events.Sport]int    // sport -> order TTL in seconds
 }
 
 func NewLaneRouter() *LaneRouter {
 	return &LaneRouter{
-		lanes: make(map[string]*lanes.Lane),
+		lanes:    make(map[string]*lanes.Lane),
+		sportTTL: make(map[events.Sport]int),
 	}
+}
+
+// SetOrderTTL records the order time-to-live for a sport.
+func (lr *LaneRouter) SetOrderTTL(sport events.Sport, seconds int) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	lr.sportTTL[sport] = seconds
+}
+
+// OrderTTL returns the order TTL for a sport in seconds (default 60).
+func (lr *LaneRouter) OrderTTL(sport events.Sport) int {
+	lr.mu.RLock()
+	defer lr.mu.RUnlock()
+	if ttl, ok := lr.sportTTL[sport]; ok && ttl > 0 {
+		return ttl
+	}
+	return defaultOrderTTL
 }
 
 func laneKey(sport events.Sport, league string) string {

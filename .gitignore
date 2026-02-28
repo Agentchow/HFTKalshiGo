@@ -5,6 +5,7 @@
 # Go build
 /bin/
 /dist/
+/football
 /hockey
 /soccer
 /goalserve_mock

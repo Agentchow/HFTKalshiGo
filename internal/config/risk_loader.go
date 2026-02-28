@@ -12,8 +12,9 @@ type LeagueLimits struct {
 }
 
 type SportLimits struct {
-	MaxSportCents int                      `yaml:"max_sport_cents"`
-	Leagues       map[string]LeagueLimits  `yaml:"leagues"`
+	MaxSportCents  int                     `yaml:"max_sport_cents"`
+	OrderTTLSeconds int                    `yaml:"order_ttl_seconds"`
+	Leagues        map[string]LeagueLimits `yaml:"leagues"`
 }
 
 type GlobalLimits struct {

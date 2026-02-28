@@ -113,6 +113,29 @@ func (c *Client) PlaceBatchOrders(ctx context.Context, req BatchCreateOrdersRequ
 	return &resp, nil
 }
 
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*OrderDetail, error) {
+	path := fmt.Sprintf("/trade-api/v2/portfolio/orders/%s", orderID)
+	body, status, err := c.Get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("get order: status=%d body=%s", status, string(body))
+	}
+	var resp struct {
+		Order OrderDetail `json:"order"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal order: %w", err)
+	}
+	return &resp.Order, nil
+}
+
+// ReadTokens returns the current number of available read rate-limit tokens.
+func (c *Client) ReadTokens() float64 {
+	return c.readLimiter.Tokens()
+}
+
 func (c *Client) CancelOrder(ctx context.Context, orderID string) error {
 	path := fmt.Sprintf("/trade-api/v2/portfolio/orders/%s", orderID)
 	_, status, err := c.Delete(ctx, path)

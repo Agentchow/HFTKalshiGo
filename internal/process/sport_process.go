@@ -19,6 +19,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/core/state/store"
 	"github.com/charleschow/hft-trading/internal/core/strategy"
 	"github.com/charleschow/hft-trading/internal/core/ticker"
+	"github.com/charleschow/hft-trading/internal/core/tracking"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/fanout"
 	"github.com/charleschow/hft-trading/internal/telemetry"
@@ -107,6 +108,16 @@ func Run(spc SportProcessConfig) {
 		defer trainingCloser.Close()
 	}
 
+	// ── Order tracking observer ───────────────────────────────
+	trackingStore, err := tracking.OpenStore(cfg.OrderTrackingDBPath)
+	if err != nil {
+		telemetry.Errorf("%s tracking store: %v", label, err)
+		os.Exit(1)
+	}
+	defer trackingStore.Close()
+	orderTracker := tracking.NewTracker(trackingStore, kalshiClient)
+	observers = append(observers, orderTracker)
+
 	// ── Overturn observer ─────────────────────────────────────
 	otStore, err := overturn.OpenStore(cfg.OverturnDBPath)
 	if err != nil {
@@ -140,7 +151,7 @@ func Run(spc SportProcessConfig) {
 
 	laneRouter := execution.NewLaneRouter()
 	execution.RegisterLanesFromConfig(laneRouter, riskLimits, spc.Sport, spc.SportKey)
-	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore)
+	_ = execution.NewService(bus, laneRouter, kalshiClient, gameStore, orderTracker)
 
 	// ── Fanout client & Kalshi WS (after init completes) ─────
 	telemetry.Infof("Connecting to fanout for %s games (%s)...", spc.SportKey, cfg.FanoutAddr)

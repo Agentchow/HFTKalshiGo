@@ -14,6 +14,7 @@ global:
 sports:
   hockey:
     max_sport_cents: 20000
+    order_ttl_seconds: 60
     leagues:
       ahl:
         max_game_cents: 5000
@@ -30,6 +31,7 @@ sports:
 
   soccer:
     max_sport_cents: 20000
+    order_ttl_seconds: 60
     leagues:
       epl:
         max_game_cents: 4000
@@ -40,6 +42,7 @@ sports:
 
   football:
     max_sport_cents: 15000
+    order_ttl_seconds: 60
     leagues:
       nfl:
         max_game_cents: 3000

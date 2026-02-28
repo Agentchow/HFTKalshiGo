@@ -18,4 +18,7 @@ func RegisterLanesFromConfig(router *LaneRouter, rl config.RiskLimits, sport eve
 		leagues[league] = ll.MaxGameCents
 	}
 	RegisterSportLanes(router, sl.MaxSportCents, leagues, sport)
+	if sl.OrderTTLSeconds > 0 {
+		router.SetOrderTTL(sport, sl.OrderTTLSeconds)
+	}
 }

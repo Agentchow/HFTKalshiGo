@@ -13,6 +13,7 @@ import (
 	"github.com/charleschow/hft-trading/internal/core/execution/lanes"
 	"github.com/charleschow/hft-trading/internal/core/state/game"
 	"github.com/charleschow/hft-trading/internal/core/state/store"
+	"github.com/charleschow/hft-trading/internal/core/tracking"
 	"github.com/charleschow/hft-trading/internal/events"
 	"github.com/charleschow/hft-trading/internal/telemetry"
 )
@@ -30,16 +31,18 @@ type Service struct {
 	router    *LaneRouter
 	client    OrderPlacer
 	gameStore *store.GameStateStore
+	tracker   *tracking.Tracker
 	sessionID string
 	orderSeq  int64
 }
 
-func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameStore *store.GameStateStore) *Service {
+func NewService(bus *events.Bus, router *LaneRouter, client OrderPlacer, gameStore *store.GameStateStore, tracker *tracking.Tracker) *Service {
 	s := &Service{
 		bus:       bus,
 		router:    router,
 		client:    client,
 		gameStore: gameStore,
+		tracker:   tracker,
 		sessionID: strconv.FormatInt(time.Now().UnixNano(), 36),
 	}
 
@@ -118,11 +121,12 @@ func (s *Service) onOrderIntent(evt events.Event) error {
 		return nil
 	}
 
-	go s.placeBatchOrder(approved, evt.Timestamp)
+	ttlSec := s.router.OrderTTL(approved[0].Sport)
+	go s.placeBatchOrder(approved, evt.Timestamp, ttlSec)
 	return nil
 }
 
-func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedAt time.Time) {
+func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedAt time.Time, ttlSec int) {
 	homeTeam, awayTeam := "?", "?"
 	gc, gcOK := s.gameStore.Get(intents[0].Sport, intents[0].GameID)
 	if gcOK {
@@ -160,7 +164,7 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			TimeInForce: "good_till_canceled",
 		}
 		if !intent.Slam {
-			req.ExpirationTS = time.Now().Add(60 * time.Second).Unix()
+			req.ExpirationTS = time.Now().Add(time.Duration(ttlSec) * time.Second).Unix()
 		}
 		priceCents := math.Floor(intent.LimitPct)
 		if strings.HasPrefix(intent.EID, "MOCK-") {
@@ -278,6 +282,10 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		})
 	}
 	fmt.Fprint(os.Stderr, rb.String())
+
+	if s.tracker != nil && gcOK {
+		s.tracker.RecordBatch(gc, intents, resp.Orders, ttlSec)
+	}
 }
 
 func shortName(name string) string {

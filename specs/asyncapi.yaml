@@ -2,6 +2,16 @@ asyncapi: 3.0.0
 info:
   title: Kalshi Market Data WebSocket API
   version: 2.0.0
+  https://kalshi.com/markets/kxtrumpmentionb/trump-mention-b/kxtrumpmentionb-26feb28
+
+  tickers = [series, event, market] tickers
+
+  series = kxtrumpmentionb
+  slug = trump-mention-b
+  event = kxtrumpmentionb-26feb28
+
+  market = each individual 
+  https://kalshi.com/markets/kxtrumpmentionb
   description: |
     WebSocket API for receiving real-time market data notifications and updates on Kalshi.
 

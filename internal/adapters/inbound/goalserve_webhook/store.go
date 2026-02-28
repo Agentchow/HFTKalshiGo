@@ -41,8 +41,23 @@ func OpenStore(path string) (*Store, error) {
 
 	db.SetMaxOpenConns(1)
 
+	var avMode int
+	if err := db.QueryRow(`PRAGMA auto_vacuum`).Scan(&avMode); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("read auto_vacuum: %w", err)
+	}
+	if avMode != 2 { // 2 = INCREMENTAL
+		telemetry.Plainf("webhook store: auto_vacuum=%d, switching to INCREMENTAL via full VACUUM", avMode)
+		if _, err := db.Exec(`PRAGMA auto_vacuum = INCREMENTAL`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("set auto_vacuum: %w", err)
+		}
+		if _, err := db.Exec(`VACUUM`); err != nil {
+			telemetry.Warnf("webhook store: VACUUM to enable auto_vacuum failed: %v", err)
+		}
+	}
+
 	for _, stmt := range []string{
-		`PRAGMA auto_vacuum = INCREMENTAL`,
 		`CREATE TABLE IF NOT EXISTS webhook_payloads (
 			id        INTEGER PRIMARY KEY AUTOINCREMENT,
 			sport     TEXT    NOT NULL,
@@ -113,14 +128,21 @@ func (s *Store) evict() {
 			SELECT COALESCE(SUM(byte_size), 0) FROM deleted`,
 			evictBatchSize,
 		).Scan(&freed)
-		if err != nil || freed == 0 {
+		if err != nil {
+			telemetry.Warnf("webhook store: eviction query failed: %v", err)
+			break
+		}
+		if freed == 0 {
+			telemetry.Warnf("webhook store: eviction freed 0 bytes, cachedSize=%d", s.cachedSize)
 			break
 		}
 		s.cachedSize -= freed
 		s.evictCounter++
 
 		if s.evictCounter%vacuumInterval == 0 {
-			s.db.Exec(`PRAGMA incremental_vacuum`)
+			if _, err := s.db.Exec(`PRAGMA incremental_vacuum`); err != nil {
+				telemetry.Warnf("webhook store: incremental_vacuum failed: %v", err)
+			}
 		}
 	}
 }

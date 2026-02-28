@@ -1,6 +1,18 @@
 {
   "series_tickers": ["KXEPLGAME", "KXUCLGAME", "KXDIMAYORGAME", "KXAFCCLGAME", "KXSAUDIPLGAME", "KXUELGAME", "KXUCLWGAME", "KXUECLGAME", "KXARGPREMDIVGAME", "KXBRASILEIROGAME", "KXSUPERLIGGAME", "KXEKSTRAKLASAGAME", "KXHNLGAME", "KXBUNDESLIGAGAME", "KXBUNDESLIGA2GAME", "KXDENSUPERLIGAGAME", "KXLALIGAGAME", "KXLALIGA2GAME", "KXEREDIVISIEGAME", "KXSERIEBGAME", "KXBELGIANPLGAME", "KXSERIEAGAME", "KXLIGUE1GAME", "KXEFLCHAMPIONSHIPGAME", "KXLIGAPORTUGALGAME", "KXLIGAMXGAME", "KXALEAGUEGAME", "KXJLEAGUEGAME", "KXMLSGAME", "KXINTLFRIENDLYGAME"],
-  "market_tickers": [],
+  "slug": "",
   "event_tickers": [],
-  "slug": ""
+  "market_tickers": []
 }
+
+
+// https://kalshi.com/markets/kxtrumpmentionb/trump-mention-b/kxtrumpmentionb-26feb28
+
+// tickers = [series, event, market] tickers
+
+// series = kxtrumpmentionb
+// slug = trump-mention-b
+// event = kxtrumpmentionb-26feb28
+
+// market = each individual 
+// https://kalshi.com/markets/kxtrumpmentionb

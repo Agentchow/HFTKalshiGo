@@ -171,7 +171,8 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			priceCents = 1
 		}
 		if priceCents < 1 {
-			priceCents = 1
+			telemetry.Debugf("[ORDER] skipping %s %s — limitPct %.1f → price <1¢", intent.Ticker, intent.Side, intent.LimitPct)
+			continue
 		}
 		if priceCents > 99 {
 			priceCents = 99

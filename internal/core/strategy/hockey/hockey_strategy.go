@@ -103,6 +103,7 @@ func (s *Strategy) OnFinish(gc *game.GameContext, gu *events.GameUpdateEvent) []
 		return nil
 	}
 
+	s.computeModel(hs)
 	return s.slamOrders(gc, hs, gu)
 }
 

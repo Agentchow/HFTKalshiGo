@@ -249,7 +249,7 @@ func (t *Tracker) backfillFills(boc *BatchOrderContext) {
 		t.store.UpdateFinalFill(boc.ID, outcome, detail.OrderID, finalCost, detail.FillCount, detail.FillCount+detail.RemainingCount)
 	}
 
-	telemetry.Infof("[TRACKING] backfilled fills for batch #%d (%d orders polled)", boc.ID, len(orderIDs))
+	telemetry.Debugf("tracking: backfilled fills for batch #%d (%d orders polled)", boc.ID, len(orderIDs))
 }
 
 // waitForBudget polls ReadTokens every 2s for up to 30s, returning true

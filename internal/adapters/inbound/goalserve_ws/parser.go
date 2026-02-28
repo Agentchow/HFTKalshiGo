@@ -24,7 +24,7 @@ func ParseUpdt(msg *UpdtMessage) *events.Event {
 	}
 
 	period := mapPeriod(sport, msg.PC)
-	if sport == events.SportHockey {
+	if sport == events.SportHockey && msg.PC != 255 {
 		if cmsPeriod := hockeyPeriodFromCMS(msg); cmsPeriod != "" {
 			period = cmsPeriod
 		}
@@ -240,6 +240,9 @@ func calcTimeRemaining(sport events.Sport, msg *UpdtMessage) float64 {
 			return 0
 		}
 	case events.SportHockey:
+		if pc == 255 {
+			return 0
+		}
 		return hockeyTimeRemaining(msg)
 	case events.SportFootball:
 		totalGame := 60.0 // 4 x 15 min quarters

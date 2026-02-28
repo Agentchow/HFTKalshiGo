@@ -118,7 +118,11 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 				return
 			}
 			ds.Finaled = true
+			defer gc.SetMatchStatus(events.StatusGameFinish)
 			telemetry.Metrics.ActiveGames.Dec()
+
+			gc.Game.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
+			gc.Game.RecalcEdge(gc.Tickers)
 
 			strat, ok := e.registry.Get(gu.Sport)
 			if !ok {
@@ -127,8 +131,6 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 			intents := strat.OnFinish(gc, &gu)
 			e.publishIntents(intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
-
-			defer gc.SetMatchStatus(events.StatusGameFinish)
 			return
 		}
 

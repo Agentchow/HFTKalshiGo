@@ -151,7 +151,20 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 	}
 
 	var reqs []kalshi_http.CreateOrderRequest
+	var kept []events.OrderIntent
 	for _, intent := range intents {
+		priceCents := math.Floor(intent.LimitPct)
+		if strings.HasPrefix(intent.EID, "MOCK-") {
+			priceCents = 1
+		}
+		if priceCents < 1 {
+			telemetry.Debugf("[EXEC] skipping %s %s — limitPct %.1f → price <1¢", intent.Ticker, intent.Side, intent.LimitPct)
+			continue
+		}
+		if priceCents > 99 {
+			priceCents = 99
+		}
+
 		s.orderSeq++
 		clientID := s.sessionID + ":" + strconv.FormatInt(s.orderSeq, 36)
 		req := kalshi_http.CreateOrderRequest{
@@ -166,17 +179,6 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 		if !intent.Slam {
 			req.ExpirationTS = time.Now().Add(time.Duration(ttlSec) * time.Second).Unix()
 		}
-		priceCents := math.Floor(intent.LimitPct)
-		if strings.HasPrefix(intent.EID, "MOCK-") {
-			priceCents = 1
-		}
-		if priceCents < 1 {
-			telemetry.Debugf("[ORDER] skipping %s %s — limitPct %.1f → price <1¢", intent.Ticker, intent.Side, intent.LimitPct)
-			continue
-		}
-		if priceCents > 99 {
-			priceCents = 99
-		}
 		priceDollars := fmt.Sprintf("%.2f", priceCents/100.0)
 		if intent.Side == "yes" {
 			req.YesPriceDollars = priceDollars
@@ -184,6 +186,13 @@ func (s *Service) placeBatchOrder(intents []events.OrderIntent, webhookReceivedA
 			req.NoPriceDollars = priceDollars
 		}
 		reqs = append(reqs, req)
+		kept = append(kept, intent)
+	}
+	intents = kept
+
+	if len(reqs) == 0 {
+		telemetry.Debugf("[EXEC] all orders skipped — no viable prices")
+		return
 	}
 
 	if !webhookReceivedAt.IsZero() {

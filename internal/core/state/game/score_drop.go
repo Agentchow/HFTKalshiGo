@@ -29,7 +29,12 @@ func (t *ScoreDropTracker) CheckDrop(curHome, curAway, newHome, newAway, confirm
 	prevTotal := curHome + curAway
 	newTotal := newHome + newAway
 
-	if newTotal >= prevTotal {
+	// A score "drop" is any decrease in total OR a same-total redistribution
+	// (e.g. 4-1 → 3-2). GoalServe sometimes corrects goal attribution without
+	// changing the total, which would otherwise bypass drop detection entirely.
+	isIndividualDrop := newHome < curHome || newAway < curAway
+
+	if newTotal >= prevTotal && !isIndividualDrop {
 		if t.scoreDropPending {
 			if t.scoreDropData != nil {
 				t.RejectedHome = t.scoreDropData.homeScore

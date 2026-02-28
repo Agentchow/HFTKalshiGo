@@ -74,6 +74,9 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	changed := hs.UpdateGameState(gu.HomeScore, gu.AwayScore, gu.Period, gu.TimeLeft)
 	s.updatePowerPlay(gc, hs, gu)
 
+	s.computeModel(hs)
+	hs.RecalcEdge(gc.Tickers)
+
 	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}
@@ -81,9 +84,6 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	scoreChanged := hadLIVEData && changed
 
 	telemetry.Metrics.ScoreChanges.Inc()
-
-	s.computeModel(hs)
-	hs.RecalcEdge(gc.Tickers)
 
 	// Build orders if the score changed or overturn occurred, and there is a significant edge.
 	if (scoreChanged || overturn) && hs.HasSignificantEdge() {
@@ -202,6 +202,7 @@ func (s *Strategy) buildOrderIntents(gc *game.GameContext, hs *hockeyState.Hocke
 		)
 	}
 
+	// Fade Orders
 	if hs.AwayTicker != "" {
 		intents = append(intents,
 			events.OrderIntent{

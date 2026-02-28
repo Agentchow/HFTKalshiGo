@@ -285,9 +285,12 @@ var HockeyAliases = map[string]string{
 	"hc lugano":                 "lugano",
 	"hc ambri-piotta":           "ambri-piotta",
 	"ambri piotta":              "ambri-piotta",
+	"ambri":                     "ambri-piotta",
+	"piotta":                    "ambri-piotta",
 	"lausanne hc":               "lausanne", // GoalServe WS: "Lausanne HC"
 	"hc lausanne":               "lausanne",
 	"ev zug":                    "zug",
+	"zug":                       "zug",
 	"scl tigers":                "langnau",
 	"scl tigers langnau":        "langnau",
 	"sc rapperswil-jona lakers": "rapperswil-jona",

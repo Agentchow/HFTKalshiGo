@@ -112,7 +112,9 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 	gc.Send(func() {
 		// ── Finish path ─────────────────────────────────────────
-		if isFinished(gu.Period) {
+		// Hockey games cannot end in a tie; a tied "Finished" means
+		// regulation ended and OT is coming. Skip the finish path.
+		if isFinished(gu.Period) && !(gu.Sport == events.SportHockey && gu.HomeScore == gu.AwayScore) {
 			ds := e.display.Get(gc.EID)
 			if ds.Finaled {
 				return

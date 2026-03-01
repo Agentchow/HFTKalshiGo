@@ -77,6 +77,16 @@ func (s *Strategy) Evaluate(gc *game.GameContext, gu *events.GameUpdateEvent) st
 	s.computeModel(hs)
 	hs.RecalcEdge(gc.Tickers)
 
+	if hs.TimeLeft < 0.01 && hs.Lead() != 0 && !hs.IsFinished() && !hs.Finaled() {
+		hs.SetFinaled()
+		telemetry.Infof("[EARLY-SLAM] %s vs %s — clock 0:00, score %d-%d",
+			hs.HomeTeam, hs.AwayTeam, hs.HomeScore, hs.AwayScore)
+		return strategy.EvalResult{
+			Intents:  s.slamOrders(gc, hs, gu),
+			Finished: true,
+		}
+	}
+
 	if !changed && !overturn {
 		return strategy.EvalResult{}
 	}

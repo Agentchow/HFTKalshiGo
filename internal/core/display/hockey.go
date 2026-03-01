@@ -50,7 +50,14 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	}
 
 	titleEvent := eventType
-	if eventType == "POWER PLAY" {
+	if eventType == "SCORE CHANGE" {
+		switch gc.LastScorer {
+		case "home":
+			titleEvent = fmt.Sprintf("%s (%s goal)", eventType, homeShort)
+		case "away":
+			titleEvent = fmt.Sprintf("%s (%s goal)", eventType, awayShort)
+		}
+	} else if eventType == "POWER PLAY" {
 		if hs.IsHomePowerPlay {
 			titleEvent = fmt.Sprintf("%s (%s)", eventType, homeShort)
 		} else if hs.IsAwayPowerPlay {

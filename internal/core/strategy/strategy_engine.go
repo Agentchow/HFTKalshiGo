@@ -148,11 +148,29 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 
 		e.publishIntents(result.Intents, gu.Sport, gu.League, gu.EID, evt.Timestamp)
 
+		if result.Finished {
+			ds := e.display.Get(gc.EID)
+			if !ds.Finaled {
+				ds.Finaled = true
+				telemetry.Metrics.ActiveGames.Dec()
+				gc.SetMatchStatus(events.StatusGameFinish)
+			}
+			return
+		}
+
 		// ── MatchStatus ─────────────────────────────────────────
 		scoreChanged := hadLIVEData && (gc.Game.GetHomeScore() != prevHome || gc.Game.GetAwayScore() != prevAway)
 		status := gu.MatchStatus
 		if scoreChanged {
 			status = events.StatusScoreChange
+			switch {
+			case gc.Game.GetHomeScore() > prevHome:
+				gc.LastScorer = "home"
+			case gc.Game.GetAwayScore() > prevAway:
+				gc.LastScorer = "away"
+			default:
+				gc.LastScorer = ""
+			}
 		} else if status == events.StatusGameStart {
 			ds := e.display.Get(gc.EID)
 			if ds.GameStarted {

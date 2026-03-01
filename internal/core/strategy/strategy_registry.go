@@ -12,7 +12,8 @@ import (
 // engine to publish. Sport-specific side effects (red card, power play
 // callbacks) are fired directly inside Evaluate.
 type EvalResult struct {
-	Intents []events.OrderIntent
+	Intents  []events.OrderIntent
+	Finished bool // game is effectively over (e.g. 0:00 clock with a lead)
 }
 
 // Strategy is the interface each sport must implement.

@@ -75,8 +75,16 @@ func PrintHockey(gc *game.GameContext, eventType string) {
 	}
 	fmt.Fprintf(&b, "    %-38sScore %d-%d  |  Period %s (%s left)%s\n",
 		"Score & time (Goalserve):", hs.HomeScore, hs.AwayScore, hs.Period, fmtTimeLeft(hs.TimeLeft), ppTag)
+	// Best (lowest) cost to bet on each team winning:
+	// Home: min(Home Yes, Away No), Away: min(Away Yes, Home No)
 	bestHome := homeYes
+	if awayNo > 0 && (bestHome == 0 || awayNo < bestHome) {
+		bestHome = awayNo
+	}
 	bestAway := awayYes
+	if homeNo > 0 && (bestAway == 0 || homeNo < bestAway) {
+		bestAway = homeNo
+	}
 
 	hasKalshi := homeYes > 0 || homeNo > 0 || awayYes > 0 || awayNo > 0
 	if !gc.KalshiConnected && len(gc.Tickers) > 0 {

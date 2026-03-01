@@ -36,8 +36,16 @@ func PrintFootball(gc *game.GameContext, eventType string) {
 		awayNo = td.NoAsk
 	}
 
+	// Best (lowest) cost to bet on each team winning:
+	// Home: min(Home Yes, Away No), Away: min(Away Yes, Home No)
 	bestHome := homeYes
+	if awayNo > 0 && (bestHome == 0 || awayNo < bestHome) {
+		bestHome = awayNo
+	}
 	bestAway := awayYes
+	if homeNo > 0 && (bestAway == 0 || homeNo < bestAway) {
+		bestAway = homeNo
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n[%s %s]\n", eventType, ts)

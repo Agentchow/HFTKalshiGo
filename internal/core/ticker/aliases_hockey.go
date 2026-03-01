@@ -23,6 +23,7 @@ var HockeyAliases = map[string]string{
 	"tor marlies":                    "toronto marlies",
 	"lav rocket":                     "laval rocket",
 	"man moose":                      "manitoba moose",
+	"mtb moose":                      "manitoba moose", // GoalServe WS: "MTB Moose"
 	"abbo canucks":                   "abbotsford canucks",
 	"abb canucks":                    "abbotsford canucks",
 	"bak condors":                    "bakersfield condors",

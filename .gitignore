@@ -16,7 +16,10 @@
 data/*
 !data/hockey/
 !data/hockey/*
+!data/vps_hockey/
+!data/vps_hockey/*
 /training/
+/training_copies/
 
 # Logs (order/response output)
 order_log.txt

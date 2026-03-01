@@ -87,6 +87,21 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 	fmt.Fprintf(&b, "\n")
 	if hasKalshi {
 		fmt.Fprintf(&b, "    %-40s%7.0fc%13.0fc%13.0fc\n", "Kalshi NO:", homeNo, drawNo, awayNo)
+		// Best (lowest) cost to bet on each outcome:
+		// Home: min(Home Yes, Away No + Draw No), TIE: min(Draw Yes, Home No + Away No), Away: min(Away Yes, Home No + Draw No)
+		bestHome := homeYes
+		if awayNo > 0 && drawNo > 0 && (bestHome == 0 || awayNo+drawNo < bestHome) {
+			bestHome = awayNo + drawNo
+		}
+		bestDraw := drawYes
+		if homeNo > 0 && awayNo > 0 && (bestDraw == 0 || homeNo+awayNo < bestDraw) {
+			bestDraw = homeNo + awayNo
+		}
+		bestAway := awayYes
+		if homeNo > 0 && drawNo > 0 && (bestAway == 0 || homeNo+drawNo < bestAway) {
+			bestAway = homeNo + drawNo
+		}
+		fmt.Fprintf(&b, "    %-40s%7.0fc%13.0fc%13.0fc\n", "Best odds:", bestHome, bestDraw, bestAway)
 	} else {
 		fmt.Fprintf(&b, "    %-40s%8s%14s%14s\n", "Kalshi NO:", "—", "—", "—")
 	}

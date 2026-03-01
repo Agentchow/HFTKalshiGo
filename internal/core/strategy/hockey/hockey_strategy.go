@@ -128,8 +128,8 @@ func (s *Strategy) computeModel(hs *hockeyState.HockeyState) {
 		return
 	}
 
-	hs.ModelHomePct = ProjectedOdds(hs.HomeStrength, hs.TimeLeft, lead) * 100
-	hs.ModelAwayPct = ProjectedOdds(hs.AwayStrength, hs.TimeLeft, -lead) * 100
+	hs.ModelHomePct = ProjectedOddsV2(hs.HomeStrength, hs.TimeLeft, lead) * 100
+	hs.ModelAwayPct = ProjectedOddsV2(hs.AwayStrength, hs.TimeLeft, -lead) * 100
 }
 
 func (s *Strategy) DisplayGame(gc *game.GameContext, eventType string) {

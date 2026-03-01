@@ -12,8 +12,10 @@
 /goalserve_ws_mock
 /inspect_training
 
-# Runtime data
-data/
+# Runtime data (data/* so we can un-ignore data/hockey)
+data/*
+!data/hockey/
+!data/hockey/*
 /training/
 
 # Logs (order/response output)

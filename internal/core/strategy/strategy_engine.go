@@ -163,6 +163,14 @@ func (e *Engine) onGameUpdate(evt events.Event) error {
 		status := gu.MatchStatus
 		if scoreChanged {
 			status = events.StatusScoreChange
+			switch {
+			case gc.Game.GetHomeScore() > prevHome:
+				gc.LastScorer = "home"
+			case gc.Game.GetAwayScore() > prevAway:
+				gc.LastScorer = "away"
+			default:
+				gc.LastScorer = ""
+			}
 		} else if status == events.StatusGameStart {
 			ds := e.display.Get(gc.EID)
 			if ds.GameStarted {

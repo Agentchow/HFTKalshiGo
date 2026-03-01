@@ -77,6 +77,10 @@ type GameContext struct {
 	// an overturn event. Nil when the current event is not an overturn.
 	LastOverturn *OverturnInfo
 
+	// LastScorer is "home" or "away" after a score change, "" otherwise.
+	// Set by the engine before notifying observers of SCORE CHANGE.
+	LastScorer string
+
 	// GameStartedAt is the actual kickoff / puck-drop time from GoalServe.
 	GameStartedAt time.Time
 

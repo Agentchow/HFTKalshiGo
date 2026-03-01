@@ -46,8 +46,18 @@ func PrintSoccer(gc *game.GameContext, eventType string) {
 		wsTag = "  [WS DOWN]"
 	}
 
+	titleEvent := eventType
+	if eventType == "SCORE CHANGE" {
+		switch gc.LastScorer {
+		case "home":
+			titleEvent = fmt.Sprintf("%s (%s goal)", eventType, homeShort)
+		case "away":
+			titleEvent = fmt.Sprintf("%s (%s goal)", eventType, awayShort)
+		}
+	}
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n[%s %s]%s\n", eventType, ts, wsTag)
+	fmt.Fprintf(&b, "\n[%s %s]%s\n", titleEvent, ts, wsTag)
 	if gc.KalshiEventURL != "" {
 		fmt.Fprintf(&b, "%s\n", gc.KalshiEventURL)
 	}
